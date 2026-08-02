@@ -976,18 +976,22 @@ Produce the JSON edit brief now.`,
 
   const generatePrompt = [
     "Create an original photoreal 16:9 YouTube mystery thumbnail (1280x720).",
-    `Title: ${title}`,
+    `Exact video title to sell (ignore any other story): ${title}`,
     parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
-    `UNIQUE reaction face (mandatory): ${forcedAnchor}`,
-    "Composition: that unique shocked reaction face on one side, discovery scene on the other, bold banner text, thick red arrow + red circle on the clue.",
+    `MANDATORY unique reaction face filling the left/face zone: ${forcedAnchor}`,
+    "The face zone MUST contain that person — never output a faceless landscape thumbnail.",
+    "Composition: unique shocked reaction face on one side, discovery scene matching ONLY this title on the other, bold banner text, thick red arrow + red circle on the clue.",
     "Do NOT use a generic blonde female news anchor unless that is the forced persona.",
+    "Do NOT invent unrelated stories (horses, deserts, other celebrities) that are not in this title.",
     parsed.overlayText
       ? `Banner text: ${parsed.overlayText.trim()}`
       : "Banner text: short ALL-CAPS punch line",
     parsed.discoveryPlan
-      ? `Discovery scene: ${parsed.discoveryPlan.trim()}`
+      ? `Discovery scene for THIS title only: ${parsed.discoveryPlan.trim()}`
       : "",
-    layoutBlueprint ? `Layout blueprint to emulate (not copy subjects/faces): ${layoutBlueprint}` : "",
+    layoutBlueprint
+      ? `Layout blueprint to emulate (zones/graphics only — not faces/subjects): ${layoutBlueprint}`
+      : "",
     "No watermarks, no channel logos, no YouTube UI.",
   ]
     .filter(Boolean)
@@ -1030,10 +1034,48 @@ export async function generateWithMysteryAgent(input: {
   let usedRef = brief.formatReference;
   let usedEdit = false;
 
-  // Prefer GENERATE (not edit) so we copy LAYOUT grammar without pasting the
-  // same reference face across every job. Format learning comes from the
-  // scanned DB blueprint + unique forced persona.
-  try {
+  // Primary: edit from a ROTATED format ref so layout stays strong, but the
+  // prompt forces a title-unique persona (never keep the reference face).
+  const refs = [
+    brief.formatReference,
+    ...(brief.formatCandidates || []).filter(
+      (c) => c.youtubeId !== brief.formatReference.youtubeId,
+    ),
+  ].slice(0, 4);
+
+  for (const ref of refs) {
+    try {
+      image = await generateThumbnailFromReference({
+        prompt: brief.imagePrompt,
+        referenceImageUrl: ref.thumbnailUrl,
+      });
+      usedEdit = true;
+      usedRef = {
+        ...brief.formatReference,
+        youtubeId: ref.youtubeId,
+        title: ref.title,
+        viewCount: ref.viewCount,
+        thumbnailUrl: ref.thumbnailUrl,
+        videoUrl: ref.videoUrl,
+        channelName: ref.channelName,
+        score: ref.score,
+        formatLabel: ref.formatLabel || brief.formatReference.formatLabel,
+      };
+      break;
+    } catch (editErr) {
+      console.warn(
+        "[mystery-thumb-agent] reference edit failed for",
+        ref.youtubeId,
+        editErr instanceof Error ? editErr.message : editErr,
+      );
+    }
+  }
+
+  // Fallback: generate from blueprint + unique persona (no face paste from ref)
+  if (!image) {
+    console.warn(
+      "[mystery-thumb-agent] format-ref edits failed, using generate+blueprint",
+    );
     image = await generateThumbnailImage(
       brief.generatePrompt ||
         brief.imagePrompt.replace(
@@ -1041,53 +1083,6 @@ export async function generateWithMysteryAgent(input: {
           "learned news-clickbait layout",
         ),
     );
-  } catch (err) {
-    console.warn(
-      "[mystery-thumb-agent] generate failed, trying format-ref edits",
-      err instanceof Error ? err.message : err,
-    );
-  }
-
-  // Fallback: edit from rotated format refs with hard unique-face instructions
-  if (!image) {
-    const refs = [
-      brief.formatReference,
-      ...(brief.formatCandidates || []).filter(
-        (c) => c.youtubeId !== brief.formatReference.youtubeId,
-      ),
-    ].slice(0, 4);
-
-    for (const ref of refs) {
-      try {
-        image = await generateThumbnailFromReference({
-          prompt: brief.imagePrompt,
-          referenceImageUrl: ref.thumbnailUrl,
-        });
-        usedEdit = true;
-        usedRef = {
-          ...brief.formatReference,
-          youtubeId: ref.youtubeId,
-          title: ref.title,
-          viewCount: ref.viewCount,
-          thumbnailUrl: ref.thumbnailUrl,
-          videoUrl: ref.videoUrl,
-          channelName: ref.channelName,
-          score: ref.score,
-          formatLabel: ref.formatLabel || brief.formatReference.formatLabel,
-        };
-        break;
-      } catch (editErr) {
-        console.warn(
-          "[mystery-thumb-agent] reference edit failed for",
-          ref.youtubeId,
-          editErr instanceof Error ? editErr.message : editErr,
-        );
-      }
-    }
-  }
-
-  if (!image) {
-    throw new Error("Mystery Thumb Agent failed to render a unique thumbnail");
   }
 
   console.log(
