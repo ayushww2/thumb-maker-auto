@@ -60,7 +60,7 @@ export async function processJob(jobId: string): Promise<void> {
       if (job.useAgent) {
         await setProgress(
           jobId,
-          "Scanning DB for 1 news/anchor format reference…",
+          "Scanning DB for 1 layout format + unique reaction face…",
         );
         const result = await generateWithMysteryAgent({
           title: job.title,
@@ -68,10 +68,17 @@ export async function processJob(jobId: string): Promise<void> {
         });
         await setProgress(
           jobId,
-          `Editing from format ref · 16:9 high — ${result.brief.formatReference.title.slice(0, 48)}…`,
+          `Rendering unique 16:9 · format from — ${result.brief.formatReference.title.slice(0, 42)}…`,
         );
-        prompt = result.brief.imagePrompt;
-        analysis = result.brief.analysis;
+        prompt = result.brief.generatePrompt || result.brief.imagePrompt;
+        analysis = [
+          result.brief.analysis,
+          result.brief.anchorPlan
+            ? `UNIQUE FACE: ${result.brief.anchorPlan}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         chosenFormat = result.brief.chosenFormat;
         overlayText = result.brief.overlayText;
         whyTheseComps = result.brief.whyTheseComps;

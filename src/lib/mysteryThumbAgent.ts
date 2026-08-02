@@ -81,6 +81,7 @@ export type MysteryAgentResult = {
   chosenFormat: string;
   overlayText: string;
   discoveryPlan: string;
+  anchorPlan: string;
   imagePrompt: string;
   generatePrompt?: string;
   whyTheseComps: string;
@@ -313,6 +314,36 @@ export async function findClosestCompetitors(
   return ranked.slice(0, limit);
 }
 
+function hashString(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Diverse reaction-face bank so jobs never reuse the same blonde-anchor default. */
+const ANCHOR_PERSONAS = [
+  "Black man in his 40s, short salt-and-pepper beard, navy blazer, stunned open-mouth reaction",
+  "Latina woman in her 30s, dark wavy hair, burgundy blouse, hand covering mouth in shock",
+  "East Asian man in his mid-30s, wire glasses, charcoal suit, wide-eyed disbelief",
+  "White man in his 50s, gray temples, teal dress shirt, leaning forward horrified",
+  "South Asian woman in her late 20s, black bob, cream blazer, gasping with hand on chest",
+  "Middle Eastern man in his 40s, trimmed beard, black turtleneck, intense worried stare",
+  "Black woman in her mid-30s, natural curls, emerald green blazer, shocked mid-report look",
+  "White woman in her 60s, silver short hair, pearl earrings, pale stunned expression",
+  "Hispanic man in his late 20s, faded undercut, olive field jacket, flashlight-lit fear face",
+  "Filipino woman in her 40s, glasses on head, mustard cardigan, covering mouth in horror",
+  "White man in his early 30s, ginger stubble, flannel shirt, looking off-frame terrified",
+  "Nigerian woman in her late 30s, braided updo, wine-red blazer, urgent breaking-news face",
+];
+
+function uniqueAnchorPersona(title: string): string {
+  const idx = hashString(title.toLowerCase().trim()) % ANCHOR_PERSONAS.length;
+  return ANCHOR_PERSONAS[idx];
+}
+
 /**
  * Scan the whole collection DB and rank thumbnails whose FORMAT we can copy
  * via images/edits (news/breaking/anchor/text package).
@@ -320,7 +351,7 @@ export async function findClosestCompetitors(
  */
 export async function rankFormatReferences(
   title: string,
-  limit = 8,
+  limit = 12,
 ): Promise<CompetitorRef[]> {
   const videos = await prisma.video.findMany({
     include: { channel: true, thumbScan: true },
@@ -378,13 +409,46 @@ export async function rankFormatReferences(
   }));
 }
 
+async function recentlyUsedFormatRefIds(limit = 10): Promise<Set<string>> {
+  try {
+    const recent = await prisma.job.findMany({
+      where: {
+        status: "completed",
+        formatRefYoutubeId: { not: null },
+      },
+      orderBy: { completedAt: "desc" },
+      take: limit,
+      select: { formatRefYoutubeId: true },
+    });
+    return new Set(
+      recent
+        .map((j) => j.formatRefYoutubeId)
+        .filter((id): id is string => Boolean(id)),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 export async function pickFormatReference(
   title: string,
 ): Promise<{ reference: CompetitorRef; shortlist: CompetitorRef[]; candidates: CompetitorRef[] }> {
-  const candidates = await rankFormatReferences(title, 8);
-  if (!candidates.length) {
+  const ranked = await rankFormatReferences(title, 12);
+  if (!ranked.length) {
     throw new Error("No format-reference thumbnail URL found in collection DB");
   }
+
+  // Rotate format templates across jobs so every title doesn't lock to the same face/ref
+  const usedRecently = await recentlyUsedFormatRefIds(10);
+  const fresh = ranked.filter((c) => !usedRecently.has(c.youtubeId));
+  const pool = fresh.length >= 2 ? fresh : ranked;
+  const pickIndex = hashString(title.toLowerCase().trim()) % pool.length;
+  const ordered = [
+    pool[pickIndex],
+    ...pool.filter((_, i) => i !== pickIndex),
+    ...ranked.filter((c) => !pool.some((p) => p.youtubeId === c.youtubeId)),
+  ];
+  const candidates = ordered.slice(0, 8);
 
   const reference: CompetitorRef = {
     ...candidates[0],
@@ -417,10 +481,11 @@ async function extractLayoutBlueprint(
           {
             type: "text",
             text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
-Extract a precise LAYOUT BLUEPRINT to copy EXACTLY (positions/zones only — not the discovery content):
+Extract a precise LAYOUT BLUEPRINT to copy (positions/zones/graphics only).
+IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing of the person; only WHERE the reaction-face zone sits.
 - aspect (must be 16:9)
 - left/right/top/bottom zones with approximate %
-- where the news anchor / reaction face sits
+- reaction-face zone placement (not the person's identity)
 - where breaking-news badge / ticker / banner text sit (quote exact text styles)
 - where red arrow + circle sit and how thick they look
 - color blocks used for realism (blue banner, red accents, etc.)
@@ -796,35 +861,43 @@ export async function runMysteryThumbAgent(input: {
   const competitors = shortlist.map((c) =>
     c.youtubeId === reference.youtubeId ? { ...c, isFormatReference: true } : c,
   );
+  const forcedAnchor = uniqueAnchorPersona(title);
 
   const client = createContactBoxClient();
   const model = getReasoningModel();
 
   const completion = await client.chat.completions.create({
     model,
-    temperature: 0.45,
+    temperature: 0.55,
     messages: [
       {
         role: "system",
         content: `You are Mystery Thumb Agent.
-You will EDIT a real competitor thumbnail used as FORMAT REFERENCE.
-Goal: keep that reference's 16:9 LAYOUT (anchor/news graphics/text zones/arrow/circle placement) and replace ONLY the discovery content for the new title using playbook learning about what makes clickbait feel real.
+You will EDIT a real competitor thumbnail used ONLY as a FORMAT / LAYOUT REFERENCE.
+Goal: keep that reference's 16:9 LAYOUT (zones, banner, arrow/circle placement) but REPLACE every person and every discovery subject with UNIQUE content for this title.
+
+CRITICAL UNIQUENESS RULES:
+- NEVER keep the reference person's face, hair, age, ethnicity, or clothes
+- NEVER default to a blonde female news anchor unless the forced persona is that
+- The reaction face MUST match the forced unique persona exactly
+- Discovery side must be unique to THIS title
 
 Return STRICT JSON only:
 {
-  "analysis": "why this 1 format reference fits + what content to show for clickbait realism",
+  "analysis": "why this format fits + how the unique persona + discovery sell the click",
   "chosenFormat": "short name of the copied format",
   "overlayText": "3-6 word ALL-CAPS punch line for the banner (required)",
+  "anchorPlan": "1 sentence restating the forced unique reaction-face persona (must match forced persona)",
   "discoveryPlan": "concrete photoreal discovery-side content for THIS title (what object/scene/clue/lighting)",
-  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must start with: Keep the EXACT same 16:9 layout/composition/graphic style as the attached reference image. Then say what to replace on the discovery side, what banner text to set (exact overlayText), keep thick red arrow+circle style, keep news-anchor/breaking zones if present. Explicitly say output must stay 16:9 widescreen (1280x720).",
+  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must say: use uploaded image only as layout template; completely replace the person with the forced unique persona; replace discovery side; set banner text; keep thick red arrow/circle style; 16:9 1280x720.",
   "whyTheseComps": "1 sentence on why this format reference was chosen"
 }
 Rules:
-- COPY FORMAT from the reference — do not invent a new layout
+- COPY FORMAT / LAYOUT only — never copy faces or discovery subjects from the reference
 - Orientation MUST stay 16:9 widescreen
-- Discovery content must be photoreal and specific to the new title (learned clickbait realism)
+- Discovery content must be photoreal and specific to the new title
 - Keep thick red arrow/circle energy if the reference has callouts
-- Banner text required; news/breaking realism preferred`,
+- Banner text required`,
       },
       {
         role: "user",
@@ -834,7 +907,10 @@ Rules:
             text: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA DIRECTION: ${input.notes.trim()}` : ""}
 
-FORMAT REFERENCE (COPY THIS LAYOUT EXACTLY):
+FORCED UNIQUE REACTION FACE (MANDATORY — do not change):
+${forcedAnchor}
+
+FORMAT REFERENCE (COPY LAYOUT ONLY — REPLACE THE PERSON):
 ${reference.title}
 views=${reference.viewCount} format=${reference.formatLabel || "n/a"}
 url=${reference.thumbnailUrl}
@@ -867,6 +943,7 @@ Produce the JSON edit brief now.`,
     analysis: string;
     chosenFormat: string;
     overlayText: string;
+    anchorPlan?: string;
     discoveryPlan: string;
     imagePrompt: string;
     whyTheseComps: string;
@@ -876,11 +953,14 @@ Produce the JSON edit brief now.`,
     throw new Error("Mystery Thumb Agent returned an empty imagePrompt");
   }
 
-  // Hard-enforce edit + 16:9 language in the edits prompt.
-  // Softened "inspired by" wording avoids third-party similarity blocks.
+  const anchorPlan = parsed.anchorPlan?.trim() || forcedAnchor;
+
+  // Hard-enforce layout-only copy + unique face + 16:9
   const imagePrompt = [
-    "Using the uploaded image only as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
-    "Match the reference's composition grammar (zones, text placement, reaction-face framing, red arrow/circle style) but invent entirely new faces, scenes, and wording.",
+    "Using the uploaded image ONLY as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
+    "Match composition grammar only (zones, text placement, red arrow/circle style). Do NOT keep the reference person's face.",
+    `COMPLETELY REPLACE the reaction/anchor person with this UNIQUE persona: ${forcedAnchor}.`,
+    "Different hair, age, ethnicity, wardrobe, and facial structure from the reference. No blonde female anchor unless that exact persona was forced.",
     "Output must be 16:9 widescreen (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
@@ -898,14 +978,16 @@ Produce the JSON edit brief now.`,
     "Create an original photoreal 16:9 YouTube mystery thumbnail (1280x720).",
     `Title: ${title}`,
     parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
-    "Composition: shocked news-anchor / reaction face on one side, discovery scene on the other, bold banner text, thick red arrow + red circle on the clue.",
+    `UNIQUE reaction face (mandatory): ${forcedAnchor}`,
+    "Composition: that unique shocked reaction face on one side, discovery scene on the other, bold banner text, thick red arrow + red circle on the clue.",
+    "Do NOT use a generic blonde female news anchor unless that is the forced persona.",
     parsed.overlayText
       ? `Banner text: ${parsed.overlayText.trim()}`
       : "Banner text: short ALL-CAPS punch line",
     parsed.discoveryPlan
       ? `Discovery scene: ${parsed.discoveryPlan.trim()}`
       : "",
-    layoutBlueprint ? `Layout blueprint to emulate (not copy subjects): ${layoutBlueprint}` : "",
+    layoutBlueprint ? `Layout blueprint to emulate (not copy subjects/faces): ${layoutBlueprint}` : "",
     "No watermarks, no channel logos, no YouTube UI.",
   ]
     .filter(Boolean)
@@ -931,6 +1013,7 @@ Produce the JSON edit brief now.`,
     chosenFormat: parsed.chosenFormat,
     overlayText: parsed.overlayText || "",
     discoveryPlan: parsed.discoveryPlan || "",
+    anchorPlan,
     imagePrompt,
     generatePrompt,
     whyTheseComps: parsed.whyTheseComps,
@@ -945,50 +1028,74 @@ export async function generateWithMysteryAgent(input: {
   const brief = await runMysteryThumbAgent(input);
   let image: Buffer | null = null;
   let usedRef = brief.formatReference;
+  let usedEdit = false;
 
-  // Try top format-reference candidates — similarity filters can block some thumbs
-  const refs = [
-    brief.formatReference,
-    ...(brief.formatCandidates || []).filter(
-      (c) => c.youtubeId !== brief.formatReference.youtubeId,
-    ),
-  ].slice(0, 4);
+  // Prefer GENERATE (not edit) so we copy LAYOUT grammar without pasting the
+  // same reference face across every job. Format learning comes from the
+  // scanned DB blueprint + unique forced persona.
+  try {
+    image = await generateThumbnailImage(
+      brief.generatePrompt ||
+        brief.imagePrompt.replace(
+          /uploaded image|attached reference/gi,
+          "learned news-clickbait layout",
+        ),
+    );
+  } catch (err) {
+    console.warn(
+      "[mystery-thumb-agent] generate failed, trying format-ref edits",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
-  for (const ref of refs) {
-    try {
-      image = await generateThumbnailFromReference({
-        prompt: brief.imagePrompt,
-        referenceImageUrl: ref.thumbnailUrl,
-      });
-      usedRef = {
-        ...brief.formatReference,
-        youtubeId: ref.youtubeId,
-        title: ref.title,
-        viewCount: ref.viewCount,
-        thumbnailUrl: ref.thumbnailUrl,
-        videoUrl: ref.videoUrl,
-        channelName: ref.channelName,
-        score: ref.score,
-        formatLabel: ref.formatLabel || brief.formatReference.formatLabel,
-      };
-      break;
-    } catch (err) {
-      console.warn(
-        "[mystery-thumb-agent] reference edit failed for",
-        ref.youtubeId,
-        err instanceof Error ? err.message : err,
-      );
+  // Fallback: edit from rotated format refs with hard unique-face instructions
+  if (!image) {
+    const refs = [
+      brief.formatReference,
+      ...(brief.formatCandidates || []).filter(
+        (c) => c.youtubeId !== brief.formatReference.youtubeId,
+      ),
+    ].slice(0, 4);
+
+    for (const ref of refs) {
+      try {
+        image = await generateThumbnailFromReference({
+          prompt: brief.imagePrompt,
+          referenceImageUrl: ref.thumbnailUrl,
+        });
+        usedEdit = true;
+        usedRef = {
+          ...brief.formatReference,
+          youtubeId: ref.youtubeId,
+          title: ref.title,
+          viewCount: ref.viewCount,
+          thumbnailUrl: ref.thumbnailUrl,
+          videoUrl: ref.videoUrl,
+          channelName: ref.channelName,
+          score: ref.score,
+          formatLabel: ref.formatLabel || brief.formatReference.formatLabel,
+        };
+        break;
+      } catch (editErr) {
+        console.warn(
+          "[mystery-thumb-agent] reference edit failed for",
+          ref.youtubeId,
+          editErr instanceof Error ? editErr.message : editErr,
+        );
+      }
     }
   }
 
   if (!image) {
-    console.warn(
-      "[mystery-thumb-agent] all format-ref edits failed, using generate prompt",
-    );
-    image = await generateThumbnailImage(
-      brief.generatePrompt || brief.imagePrompt.replace(/uploaded image|attached reference/gi, "typical news-clickbait layout"),
-    );
+    throw new Error("Mystery Thumb Agent failed to render a unique thumbnail");
   }
+
+  console.log(
+    "[mystery-thumb-agent] rendered via",
+    usedEdit ? "format-ref-edit" : "generate+blueprint",
+    "anchor=",
+    brief.anchorPlan.slice(0, 80),
+  );
 
   // Hard guarantee YouTube 16:9 regardless of upstream model quirks
   image = await toYouTube16x9(image);
