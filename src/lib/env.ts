@@ -26,7 +26,8 @@ export function getImageQuality(): "low" | "medium" | "high" | "auto" {
 
 /** 16:9 YouTube-friendly default */
 export function getImageSize(): string {
-  return process.env.CONTACTBOX_IMAGE_SIZE || "1536x1024";
+  // Prefer YouTube-native 16:9. Note: 1536x1024 is 3:2, not 16:9.
+  return process.env.CONTACTBOX_IMAGE_SIZE || "1280x720";
 }
 
 export function getR2Config() {

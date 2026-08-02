@@ -99,7 +99,8 @@ export async function generateThumbnailImage(prompt: string): Promise<Buffer> {
     model,
     prompt,
     n: 1,
-    size,
+    // Cast: ContactBox accepts YouTube 1280x720 (true 16:9) beyond OpenAI's typed set
+    size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
     quality,
   });
 
@@ -132,8 +133,8 @@ export async function generateThumbnailFromReference(input: {
   const form = new FormData();
   form.append("model", getImageModel());
   form.append("prompt", input.prompt);
-  // Always force YouTube 16:9 for format-copy edits
-  form.append("size", "1536x1024");
+  // YouTube-native 16:9 (not 1536x1024 which is 3:2)
+  form.append("size", "1280x720");
   form.append("quality", getImageQuality());
   form.append(
     "image",

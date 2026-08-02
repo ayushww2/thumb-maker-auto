@@ -8,6 +8,7 @@ import {
   generateThumbnailImage,
 } from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
+import { toYouTube16x9 } from "@/lib/imageSize";
 import { scoreCompetitor } from "@/lib/textSimilarity";
 
 export type CompetitorRef = {
@@ -802,7 +803,7 @@ Return STRICT JSON only:
   "chosenFormat": "short name of the copied format",
   "overlayText": "3-6 word ALL-CAPS punch line for the banner (required)",
   "discoveryPlan": "concrete photoreal discovery-side content for THIS title (what object/scene/clue/lighting)",
-  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must start with: Keep the EXACT same 16:9 layout/composition/graphic style as the attached reference image. Then say what to replace on the discovery side, what banner text to set (exact overlayText), keep thick red arrow+circle style, keep news-anchor/breaking zones if present. Explicitly say output must stay 16:9 widescreen (1536x1024).",
+  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must start with: Keep the EXACT same 16:9 layout/composition/graphic style as the attached reference image. Then say what to replace on the discovery side, what banner text to set (exact overlayText), keep thick red arrow+circle style, keep news-anchor/breaking zones if present. Explicitly say output must stay 16:9 widescreen (1280x720).",
   "whyTheseComps": "1 sentence on why this format reference was chosen"
 }
 Rules:
@@ -865,7 +866,7 @@ Produce the JSON edit brief now.`,
   // Hard-enforce edit + 16:9 language in the edits prompt
   const imagePrompt = [
     "Keep the EXACT same 16:9 widescreen layout, graphic style, text zones, and clickbait chrome as the attached reference image.",
-    "Do not change orientation — output must be 16:9 (1536x1024).",
+    "Do not change orientation — output must be 16:9 (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
       ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
@@ -907,20 +908,22 @@ export async function generateWithMysteryAgent(input: {
   notes?: string;
 }) {
   const brief = await runMysteryThumbAgent(input);
+  let image: Buffer;
   try {
-    const image = await generateThumbnailFromReference({
+    image = await generateThumbnailFromReference({
       prompt: brief.imagePrompt,
       referenceImageUrl: brief.formatReference.thumbnailUrl,
     });
-    return { brief, image };
   } catch (err) {
     console.warn(
       "[mystery-thumb-agent] reference edit failed, falling back to generate",
       err instanceof Error ? err.message : err,
     );
-    const image = await generateThumbnailImage(brief.imagePrompt);
-    return { brief, image };
+    image = await generateThumbnailImage(brief.imagePrompt);
   }
+  // Hard guarantee YouTube 16:9 regardless of upstream model quirks
+  image = await toYouTube16x9(image);
+  return { brief, image };
 }
 
 export async function getAgentStatus() {
