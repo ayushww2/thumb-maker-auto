@@ -1,0 +1,7 @@
+echo "# thumb-maker-auto" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/ayushww2/thumb-maker-auto.git
+git push -u origin main
