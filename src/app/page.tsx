@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 
 type GenerateResponse = {
@@ -47,6 +48,12 @@ export default function Home() {
       />
 
       <header className="anim-rise relative z-10">
+        <div className="mb-6 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.18em]">
+          <span className="text-[var(--accent)]">Generate</span>
+          <Link href="/collection" className="text-[var(--muted)] hover:text-[var(--ink)]">
+            Collection Database
+          </Link>
+        </div>
         <p className="font-[family-name:var(--font-display)] text-5xl font-extrabold tracking-tight text-[var(--ink)] sm:text-7xl">
           Mlin Auto Thumb
         </p>

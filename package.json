@@ -4,16 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "db:seed": "tsx scripts/seed-collection.ts"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1101.0",
+    "@prisma/client": "^5.22.0",
     "@tailwindcss/postcss": "^4",
+    "dotenv": "^17.4.2",
     "next": "^15.5.9",
     "openai": "^7.3.0",
     "react": "19.1.0",
@@ -30,6 +34,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^15.5.9",
+    "prisma": "^5.22.0",
+    "tsx": "^4.23.4",
     "typescript": "^5"
   }
 }

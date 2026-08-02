@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Channel {
+  id           String  @id @default(cuid())
+  handle       String  @unique
+  channelId    String?
+  name         String
+  url          String
+  videoCount   Int     @default(0)
+  videos       Video[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Video {
+  id              String   @id @default(cuid())
+  youtubeId       String   @unique
+  title           String
+  viewCount       Int
+  thumbnailUrl    String
+  thumbnailUrlHq  String?
+  videoUrl        String
+  durationSeconds Int?
+  uploadDate      String?
+  channelId       String
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  indexedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([viewCount])
+  @@index([title])
+  @@index([channelId, viewCount])
+}

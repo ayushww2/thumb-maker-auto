@@ -45,3 +45,5 @@ next-env.d.ts
 
 # railway
 .railway
+
+/src/generated/prisma

@@ -5,7 +5,7 @@ nixPkgs = ["nodejs_22", "npm-10_x"]
 cmds = ["npm ci --include=optional"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["npx prisma generate", "npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "npx prisma migrate deploy && npm run start"
