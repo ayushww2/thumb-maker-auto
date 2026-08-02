@@ -2,7 +2,11 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
-import { createContactBoxClient, generateThumbnailImage } from "@/lib/contactbox";
+import {
+  createContactBoxClient,
+  generateThumbnailFromReference,
+  generateThumbnailImage,
+} from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { scoreCompetitor } from "@/lib/textSimilarity";
 
@@ -14,6 +18,9 @@ export type CompetitorRef = {
   videoUrl: string;
   channelName: string;
   score: number;
+  formatScore?: number;
+  formatLabel?: string | null;
+  isFormatReference?: boolean;
 };
 
 export type ThumbScanLesson = {
@@ -50,14 +57,28 @@ export type MysteryPlaybook = {
   r2Url?: string | null;
 };
 
+export type FormatReference = {
+  youtubeId: string;
+  title: string;
+  viewCount: number;
+  thumbnailUrl: string;
+  videoUrl: string;
+  channelName: string;
+  score: number;
+  formatLabel: string;
+  layoutBlueprint: string;
+};
+
 export type MysteryAgentResult = {
   agent: "mystery-thumb-agent";
   title: string;
   playbook: MysteryPlaybook;
   competitors: CompetitorRef[];
+  formatReference: FormatReference;
   analysis: string;
   chosenFormat: string;
   overlayText: string;
+  discoveryPlan: string;
   imagePrompt: string;
   whyTheseComps: string;
 };
@@ -189,12 +210,42 @@ async function persistPlaybook(playbook: MysteryPlaybook) {
   }
 }
 
+function newsFormatFitness(parts: {
+  title?: string | null;
+  formatLabel?: string | null;
+  overlayText?: string | null;
+  composition?: string | null;
+  subject?: string | null;
+  rawNotes?: string | null;
+}): number {
+  const blob = [
+    parts.title,
+    parts.formatLabel,
+    parts.overlayText,
+    parts.composition,
+    parts.subject,
+    parts.rawNotes,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  let score = 0;
+  if (/breaking|news|anchor|broadcast|reporter|ticker|cnn|fox|msnbc|bbc/.test(blob))
+    score += 0.4;
+  if (/face|reaction|shocked|hand over|anchor/.test(blob)) score += 0.2;
+  if (/banner|text|caption|headline|breaking/.test(blob) || (parts.overlayText || "").trim())
+    score += 0.2;
+  if (/arrow|circle|callout/.test(blob)) score += 0.15;
+  if (/split|left|right/.test(blob)) score += 0.1;
+  return Math.min(1, score);
+}
+
 export async function findClosestCompetitors(
   title: string,
   limit = 5,
 ): Promise<CompetitorRef[]> {
   const videos = await prisma.video.findMany({
-    include: { channel: true },
+    include: { channel: true, thumbScan: true },
   });
 
   const ranked = videos
@@ -204,6 +255,14 @@ export async function findClosestCompetitors(
         title: v.title,
         viewCount: v.viewCount,
       });
+      const formatScore = newsFormatFitness({
+        title: v.title,
+        formatLabel: v.thumbScan?.formatLabel,
+        overlayText: v.thumbScan?.overlayText,
+        composition: v.thumbScan?.composition,
+        subject: v.thumbScan?.subject,
+        rawNotes: v.thumbScan?.rawNotes,
+      });
       return {
         youtubeId: v.youtubeId,
         title: v.title,
@@ -212,16 +271,18 @@ export async function findClosestCompetitors(
         videoUrl: v.videoUrl,
         channelName: v.channel.name,
         score,
+        formatScore,
+        formatLabel: v.thumbScan?.formatLabel || null,
       };
     })
-    .filter((v) => v.score > 0.05)
+    .filter((v) => v.score > 0.04)
     .sort((a, b) => b.score - a.score || b.viewCount - a.viewCount)
-    .slice(0, limit);
+    .slice(0, Math.max(limit, 12));
 
   if (ranked.length < limit) {
     const top = [...videos]
       .sort((a, b) => b.viewCount - a.viewCount)
-      .slice(0, limit - ranked.length)
+      .slice(0, limit)
       .map((v) => ({
         youtubeId: v.youtubeId,
         title: v.title,
@@ -230,6 +291,15 @@ export async function findClosestCompetitors(
         videoUrl: v.videoUrl,
         channelName: v.channel.name,
         score: 0.04,
+        formatScore: newsFormatFitness({
+          title: v.title,
+          formatLabel: v.thumbScan?.formatLabel,
+          overlayText: v.thumbScan?.overlayText,
+          composition: v.thumbScan?.composition,
+          subject: v.thumbScan?.subject,
+          rawNotes: v.thumbScan?.rawNotes,
+        }),
+        formatLabel: v.thumbScan?.formatLabel || null,
       }));
     const seen = new Set(ranked.map((r) => r.youtubeId));
     for (const t of top) {
@@ -238,6 +308,118 @@ export async function findClosestCompetitors(
   }
 
   return ranked.slice(0, limit);
+}
+
+/**
+ * Scan the whole collection DB and pick THE ONE thumbnail whose FORMAT
+ * we will copy via images/edits (news/breaking/anchor/text package).
+ * Title similarity is secondary — layout fitness wins.
+ */
+export async function pickFormatReference(
+  title: string,
+): Promise<{ reference: CompetitorRef; shortlist: CompetitorRef[] }> {
+  const videos = await prisma.video.findMany({
+    include: { channel: true, thumbScan: true },
+  });
+  if (!videos.length) {
+    throw new Error("No competitor thumbnails found to copy format from");
+  }
+
+  const scored = videos
+    .map((v) => {
+      const titleScore = scoreCompetitor({
+        query: title,
+        title: v.title,
+        viewCount: v.viewCount,
+      });
+      const formatScore = newsFormatFitness({
+        title: v.title,
+        formatLabel: v.thumbScan?.formatLabel,
+        overlayText: v.thumbScan?.overlayText,
+        composition: v.thumbScan?.composition,
+        subject: v.thumbScan?.subject,
+        rawNotes: v.thumbScan?.rawNotes,
+      });
+      const fitness =
+        formatScore * 0.7 +
+        titleScore * 0.15 +
+        Math.min(0.15, Math.log10(v.viewCount + 1) / 45);
+      return {
+        youtubeId: v.youtubeId,
+        title: v.title,
+        viewCount: v.viewCount,
+        thumbnailUrl: v.r2ThumbnailUrl || v.thumbnailUrl,
+        videoUrl: v.videoUrl,
+        channelName: v.channel.name,
+        score: titleScore,
+        formatScore,
+        formatLabel: v.thumbScan?.formatLabel || null,
+        fitness,
+      };
+    })
+    .sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount);
+
+  const best = scored[0];
+  if (!best?.thumbnailUrl) {
+    throw new Error("No format-reference thumbnail URL found in collection DB");
+  }
+
+  const reference: CompetitorRef = {
+    youtubeId: best.youtubeId,
+    title: best.title,
+    viewCount: best.viewCount,
+    thumbnailUrl: best.thumbnailUrl,
+    videoUrl: best.videoUrl,
+    channelName: best.channelName,
+    score: best.score,
+    formatScore: best.formatScore,
+    formatLabel: best.formatLabel,
+    isFormatReference: true,
+  };
+
+  // Keep a small related shortlist for the jobs UI (format ref first)
+  const related = await findClosestCompetitors(title, 4);
+  const shortlist = [
+    reference,
+    ...related.filter((r) => r.youtubeId !== reference.youtubeId),
+  ].slice(0, 5);
+
+  return { reference, shortlist };
+}
+
+async function extractLayoutBlueprint(
+  reference: CompetitorRef,
+): Promise<string> {
+  const client = createContactBoxClient();
+  const model = getReasoningModel();
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0.1,
+    max_tokens: 700,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
+Extract a precise LAYOUT BLUEPRINT to copy EXACTLY (positions/zones only — not the discovery content):
+- aspect (must be 16:9)
+- left/right/top/bottom zones with approximate %
+- where the news anchor / reaction face sits
+- where breaking-news badge / ticker / banner text sit (quote exact text styles)
+- where red arrow + circle sit and how thick they look
+- color blocks used for realism (blue banner, red accents, etc.)
+Return a tight bullet blueprint, no intro.`,
+          },
+          { type: "image_url", image_url: { url: reference.thumbnailUrl } },
+        ] as never,
+      },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content?.trim();
+  if (!text) throw new Error("Failed to extract layout blueprint from format reference");
+  return text;
 }
 
 async function scanOneThumb(input: {
@@ -590,78 +772,78 @@ export async function runMysteryThumbAgent(input: {
   const title = input.title.trim();
   if (!title) throw new Error("Title is required");
 
-  const [playbook, competitors] = await Promise.all([
+  const [playbook, picked] = await Promise.all([
     buildMysteryPlaybook(false),
-    findClosestCompetitors(title, 5),
+    pickFormatReference(title),
   ]);
 
-  const visualNotes = await describeCompetitorThumbs(competitors);
+  const { reference, shortlist } = picked;
+  const layoutBlueprint = await extractLayoutBlueprint(reference);
+  const competitors = shortlist.map((c) =>
+    c.youtubeId === reference.youtubeId ? { ...c, isFormatReference: true } : c,
+  );
+
   const client = createContactBoxClient();
   const model = getReasoningModel();
 
   const completion = await client.chat.completions.create({
     model,
-    temperature: 0.55,
+    temperature: 0.45,
     messages: [
       {
         role: "system",
         content: `You are Mystery Thumb Agent.
-Mission: turn a new video title into a competitor-grade mystery YouTube thumbnail that looks like a REAL viral clickbait package — news realism, not a clean cinematic poster.
-
-DEFAULT FORMAT (use unless comps clearly contradict):
-"News-realism clickbait split"
-1) LEFT ~35%: photoreal shocked NEWS ANCHOR / reporter close-up (hand over mouth or stunned eyes). Looks like a real broadcast face, not a random stock actor.
-2) RIGHT ~65%: the discovery scene matching the title (diver, sealed door, chamber, wreck, etc.) — photoreal, high contrast, mobile-readable.
-3) CLICKBAIT CUES that look REAL (not thin decorative lines):
-   - one THICK bright RED arrow pointing at the mystery detail
-   - one bold RED circle around that detail
-4) TEXT (required for discovery/mystery titles):
-   - one short ALL-CAPS punch line on a solid blue/black banner (3–6 words), e.g. "IT'S NOT FROM EARTH!", "SEALED FOR CENTURIES", "THEY OPENED IT"
-   - optional thin white ticker/subhead strip with a truncated news-style sentence from the title
-5) Optional small "BREAKING" / live-news badge for realism.
+You will EDIT a real competitor thumbnail used as FORMAT REFERENCE.
+Goal: keep that reference's 16:9 LAYOUT (anchor/news graphics/text zones/arrow/circle placement) and replace ONLY the discovery content for the new title using playbook learning about what makes clickbait feel real.
 
 Return STRICT JSON only:
 {
-  "analysis": "what the closest comps teach for THIS title",
-  "chosenFormat": "news-realism clickbait split description",
-  "overlayText": "3-6 word ALL-CAPS punch line that MUST appear in the image",
-  "imagePrompt": "one detailed 16:9 gpt-image-2 prompt that EXPLICITLY includes: left anchor reaction face, right discovery scene, thick red arrow + red circle on the clue, blue banner with the exact overlayText, optional ticker; photoreal news-clickbait aesthetic; NO watermarks/channel logos/YouTube UI",
-  "whyTheseComps": "1-2 sentences on why these 5 comps were used"
+  "analysis": "why this 1 format reference fits + what content to show for clickbait realism",
+  "chosenFormat": "short name of the copied format",
+  "overlayText": "3-6 word ALL-CAPS punch line for the banner (required)",
+  "discoveryPlan": "concrete photoreal discovery-side content for THIS title (what object/scene/clue/lighting)",
+  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must start with: Keep the EXACT same 16:9 layout/composition/graphic style as the attached reference image. Then say what to replace on the discovery side, what banner text to set (exact overlayText), keep thick red arrow+circle style, keep news-anchor/breaking zones if present. Explicitly say output must stay 16:9 widescreen (1536x1024).",
+  "whyTheseComps": "1 sentence on why this format reference was chosen"
 }
 Rules:
-- Never output a clean empty cinematic still with no text/graphics for mystery/discovery titles
-- Arrow + circle must be thick, saturated, unmistakable YouTube clickbait graphics
-- Overlay text is REQUIRED (not empty) for sealed chamber / diver / discovery / "what they found" titles
-- Anchor face must feel like real TV news realism grounding the fantastical claim
-- imagePrompt must be self-contained for an image model`,
+- COPY FORMAT from the reference — do not invent a new layout
+- Orientation MUST stay 16:9 widescreen
+- Discovery content must be photoreal and specific to the new title (learned clickbait realism)
+- Keep thick red arrow/circle energy if the reference has callouts
+- Banner text required; news/breaking realism preferred`,
       },
       {
         role: "user",
-        content: `NEW TITLE: ${title}
+        content: [
+          {
+            type: "text",
+            text: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA DIRECTION: ${input.notes.trim()}` : ""}
 
-PLAYBOOK SUMMARY:
-${playbook.summary}
+FORMAT REFERENCE (COPY THIS LAYOUT EXACTLY):
+${reference.title}
+views=${reference.viewCount} format=${reference.formatLabel || "n/a"}
+url=${reference.thumbnailUrl}
 
+LAYOUT BLUEPRINT EXTRACTED FROM REFERENCE:
+${layoutBlueprint}
+
+PLAYBOOK LEARNING (what to show for viral clickbait realism):
+SUMMARY: ${playbook.summary}
 VIRAL PATTERNS:
 ${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
-
-LOW-VIEW PATTERNS TO AVOID:
-${playbook.lowViewPatterns.map((p) => `- ${p}`).join("\n")}
-
-THUMBNAIL FORMATS (from visual scans):
-${playbook.thumbnailFormats.map((p) => `- ${p}`).join("\n")}
-
 DO:
 ${playbook.doList.map((p) => `- ${p}`).join("\n")}
-
 DON'T:
 ${playbook.dontList.map((p) => `- ${p}`).join("\n")}
 
-TOP 5 CLOSEST COMPETITORS (live vision / stored scans):
-${visualNotes}
-
-Produce the JSON brief now.`,
+Produce the JSON edit brief now.`,
+          },
+          {
+            type: "image_url",
+            image_url: { url: reference.thumbnailUrl },
+          },
+        ] as never,
       },
     ],
   });
@@ -671,6 +853,7 @@ Produce the JSON brief now.`,
     analysis: string;
     chosenFormat: string;
     overlayText: string;
+    discoveryPlan: string;
     imagePrompt: string;
     whyTheseComps: string;
   }>(content);
@@ -679,15 +862,42 @@ Produce the JSON brief now.`,
     throw new Error("Mystery Thumb Agent returned an empty imagePrompt");
   }
 
+  // Hard-enforce edit + 16:9 language in the edits prompt
+  const imagePrompt = [
+    "Keep the EXACT same 16:9 widescreen layout, graphic style, text zones, and clickbait chrome as the attached reference image.",
+    "Do not change orientation — output must be 16:9 (1536x1024).",
+    parsed.imagePrompt.trim(),
+    parsed.overlayText
+      ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
+      : "",
+    parsed.discoveryPlan
+      ? `Discovery-side content to depict: ${parsed.discoveryPlan.trim()}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return {
     agent: "mystery-thumb-agent",
     title,
     playbook,
     competitors,
+    formatReference: {
+      youtubeId: reference.youtubeId,
+      title: reference.title,
+      viewCount: reference.viewCount,
+      thumbnailUrl: reference.thumbnailUrl,
+      videoUrl: reference.videoUrl,
+      channelName: reference.channelName,
+      score: reference.score,
+      formatLabel: reference.formatLabel || "format-reference",
+      layoutBlueprint,
+    },
     analysis: parsed.analysis,
     chosenFormat: parsed.chosenFormat,
     overlayText: parsed.overlayText || "",
-    imagePrompt: parsed.imagePrompt.trim(),
+    discoveryPlan: parsed.discoveryPlan || "",
+    imagePrompt,
     whyTheseComps: parsed.whyTheseComps,
   };
 }
@@ -697,8 +907,20 @@ export async function generateWithMysteryAgent(input: {
   notes?: string;
 }) {
   const brief = await runMysteryThumbAgent(input);
-  const image = await generateThumbnailImage(brief.imagePrompt);
-  return { brief, image };
+  try {
+    const image = await generateThumbnailFromReference({
+      prompt: brief.imagePrompt,
+      referenceImageUrl: brief.formatReference.thumbnailUrl,
+    });
+    return { brief, image };
+  } catch (err) {
+    console.warn(
+      "[mystery-thumb-agent] reference edit failed, falling back to generate",
+      err instanceof Error ? err.message : err,
+    );
+    const image = await generateThumbnailImage(brief.imagePrompt);
+    return { brief, image };
+  }
 }
 
 export async function getAgentStatus() {

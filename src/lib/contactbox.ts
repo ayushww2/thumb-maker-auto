@@ -72,6 +72,19 @@ Rules:
   return prompt;
 }
 
+async function bufferFromImageResponse(item: {
+  b64_json?: string | null;
+  url?: string | null;
+}): Promise<Buffer> {
+  if (item.b64_json) return Buffer.from(item.b64_json, "base64");
+  if (item.url) {
+    const res = await fetch(item.url);
+    if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  throw new Error("ContactBox image had neither b64_json nor url");
+}
+
 export async function generateThumbnailImage(prompt: string): Promise<Buffer> {
   const client = createContactBoxClient();
   const model = getImageModel();
@@ -92,14 +105,56 @@ export async function generateThumbnailImage(prompt: string): Promise<Buffer> {
 
   const item = result.data?.[0];
   if (!item) throw new Error("ContactBox image generation returned no data");
+  return bufferFromImageResponse(item);
+}
 
-  if (item.b64_json) {
-    return Buffer.from(item.b64_json, "base64");
+/**
+ * Copy LAYOUT from a real competitor thumbnail (format reference),
+ * regenerate content for the new title at forced 16:9.
+ */
+export async function generateThumbnailFromReference(input: {
+  prompt: string;
+  referenceImageUrl: string;
+}): Promise<Buffer> {
+  const apiKey = getContactBoxApiKey();
+  if (!apiKey) throw new Error("CONTACTBOX_API_KEY is not set");
+
+  const refRes = await fetch(input.referenceImageUrl, {
+    headers: { "User-Agent": "mlin-auto-thumb" },
+  });
+  if (!refRes.ok) {
+    throw new Error(`Failed to download format reference: ${refRes.status}`);
   }
-  if (item.url) {
-    const res = await fetch(item.url);
-    if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
+  const refBytes = Buffer.from(await refRes.arrayBuffer());
+  const contentType = refRes.headers.get("content-type") || "image/jpeg";
+  const ext = contentType.includes("png") ? "png" : "jpg";
+
+  const form = new FormData();
+  form.append("model", getImageModel());
+  form.append("prompt", input.prompt);
+  // Always force YouTube 16:9 for format-copy edits
+  form.append("size", "1536x1024");
+  form.append("quality", getImageQuality());
+  form.append(
+    "image",
+    new Blob([refBytes], { type: contentType }),
+    `format-ref.${ext}`,
+  );
+
+  const base = getContactBoxBaseUrl().replace(/\/$/, "");
+  const res = await fetch(`${base}/images/edits`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  const json = (await res.json()) as {
+    error?: { message?: string };
+    data?: Array<{ b64_json?: string; url?: string }>;
+  };
+  if (!res.ok) {
+    throw new Error(json.error?.message || `images/edits failed: ${res.status}`);
   }
-  throw new Error("ContactBox image had neither b64_json nor url");
+  const item = json.data?.[0];
+  if (!item) throw new Error("images/edits returned no data");
+  return bufferFromImageResponse(item);
 }

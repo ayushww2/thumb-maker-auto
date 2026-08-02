@@ -52,15 +52,24 @@ export async function processJob(jobId: string): Promise<void> {
       let whyTheseComps: string | null = null;
       let playbookSummary: string | null = null;
       let competitorsJson: unknown = null;
+      let formatRefYoutubeId: string | null = null;
+      let formatRefTitle: string | null = null;
+      let formatRefUrl: string | null = null;
       let image: Buffer;
 
       if (job.useAgent) {
-        await setProgress(jobId, "Scanning collection + matching top 5 comps…");
+        await setProgress(
+          jobId,
+          "Scanning DB for 1 news/anchor format reference…",
+        );
         const result = await generateWithMysteryAgent({
           title: job.title,
           notes: job.notes || undefined,
         });
-        await setProgress(jobId, "Rendering gpt-image-2 high 16:9…");
+        await setProgress(
+          jobId,
+          `Editing from format ref · 16:9 high — ${result.brief.formatReference.title.slice(0, 48)}…`,
+        );
         prompt = result.brief.imagePrompt;
         analysis = result.brief.analysis;
         chosenFormat = result.brief.chosenFormat;
@@ -68,9 +77,12 @@ export async function processJob(jobId: string): Promise<void> {
         whyTheseComps = result.brief.whyTheseComps;
         playbookSummary = result.brief.playbook.summary;
         competitorsJson = result.brief.competitors;
+        formatRefYoutubeId = result.brief.formatReference.youtubeId;
+        formatRefTitle = result.brief.formatReference.title;
+        formatRefUrl = result.brief.formatReference.thumbnailUrl;
         image = result.image;
       } else {
-        await setProgress(jobId, "Rendering gpt-image-2…");
+        await setProgress(jobId, "Rendering gpt-image-2 16:9…");
         // Fallback shouldn't normally happen for queued agent jobs
         image = await generateThumbnailImage(
           `Cinematic 16:9 mystery YouTube thumbnail for: ${job.title}`,
@@ -100,6 +112,9 @@ export async function processJob(jobId: string): Promise<void> {
           whyTheseComps,
           playbookSummary,
           competitorsJson: competitorsJson as object | undefined,
+          formatRefYoutubeId,
+          formatRefTitle,
+          formatRefUrl,
           imageUrl,
           imageR2Key,
           imageBytes: image.byteLength,

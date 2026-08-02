@@ -102,6 +102,9 @@ model Job {
   whyTheseComps   String?
   playbookSummary String?
   competitorsJson Json?
+  formatRefYoutubeId String?
+  formatRefTitle     String?
+  formatRefUrl       String?
   imageR2Key      String?
   imageUrl        String?
   imageBytes      Int?

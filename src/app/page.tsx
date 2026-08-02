@@ -97,7 +97,7 @@ export default function Home() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="Prefer face + artifact, red circle callout, no long text…"
+            placeholder="News-realism: shocked anchor left, discovery right, thick red arrow + circle, bold banner text…"
             className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 text-base text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />
         </label>

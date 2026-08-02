@@ -15,6 +15,9 @@ type JobRow = {
   imageBytes?: number | null;
   chosenFormat?: string | null;
   overlayText?: string | null;
+  formatRefYoutubeId?: string | null;
+  formatRefTitle?: string | null;
+  formatRefUrl?: string | null;
   createdAt: string;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -119,6 +122,7 @@ function JobsPageInner() {
       thumbnailUrl: string;
       videoUrl: string;
       channelName: string;
+      isFormatReference?: boolean;
     }>;
   } | null;
 
@@ -252,12 +256,56 @@ function JobsPageInner() {
                 </p>
               ) : null}
 
+              {selectedJob.formatRefUrl ? (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Format reference (copied layout)
+                  </p>
+                  <a
+                    href={
+                      selectedJob.formatRefYoutubeId
+                        ? `https://www.youtube.com/watch?v=${selectedJob.formatRefYoutubeId}`
+                        : selectedJob.formatRefUrl
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 grid grid-cols-[140px_1fr] gap-3 overflow-hidden border border-[var(--accent)]/50 bg-black/30"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedJob.formatRefUrl}
+                      alt=""
+                      className="aspect-video w-full object-cover"
+                    />
+                    <div className="min-w-0 py-2 pr-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+                        16:9 layout source
+                      </p>
+                      <p className="mt-1 line-clamp-3 text-xs leading-snug">
+                        {selectedJob.formatRefTitle || "Reference thumbnail"}
+                      </p>
+                    </div>
+                  </a>
+                </div>
+              ) : null}
+
               {selectedJob.chosenFormat ? (
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
                     Chosen format
                   </p>
                   <p className="mt-1 text-sm">{selectedJob.chosenFormat}</p>
+                </div>
+              ) : null}
+
+              {selectedJob.overlayText ? (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Overlay text
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tracking-wide">
+                    {selectedJob.overlayText}
+                  </p>
                 </div>
               ) : null}
 
@@ -275,7 +323,7 @@ function JobsPageInner() {
               {selectedJob.competitorsJson && selectedJob.competitorsJson.length > 0 ? (
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                    Top comps
+                    Related comps
                   </p>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {selectedJob.competitorsJson.slice(0, 5).map((c) => (
@@ -284,11 +332,22 @@ function JobsPageInner() {
                         href={c.videoUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="overflow-hidden border border-[var(--line)]"
+                        className={`overflow-hidden border ${
+                          c.isFormatReference ||
+                          c.youtubeId === selectedJob.formatRefYoutubeId
+                            ? "border-[var(--accent)]"
+                            : "border-[var(--line)]"
+                        }`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={c.thumbnailUrl} alt="" className="aspect-video w-full object-cover" />
-                        <p className="line-clamp-2 p-1.5 text-[10px]">{c.title}</p>
+                        <p className="line-clamp-2 p-1.5 text-[10px]">
+                          {c.isFormatReference ||
+                          c.youtubeId === selectedJob.formatRefYoutubeId
+                            ? "FORMAT · "
+                            : ""}
+                          {c.title}
+                        </p>
                       </a>
                     ))}
                   </div>
