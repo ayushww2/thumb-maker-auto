@@ -53,3 +53,8 @@ next-env.d.ts
 .claude/
 .windsurf/
 skills-lock.json
+
+# local test artifacts
+format-ref-source.jpg
+tahoe-generated.png
+*.local.png
