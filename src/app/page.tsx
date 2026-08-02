@@ -3,19 +3,43 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
+type Competitor = {
+  youtubeId: string;
+  title: string;
+  viewCount: number;
+  thumbnailUrl: string;
+  videoUrl: string;
+  channelName: string;
+  score: number;
+};
+
 type GenerateResponse = {
   ok?: boolean;
   error?: string;
+  agent?: string | null;
   prompt?: string;
+  analysis?: string | null;
+  chosenFormat?: string | null;
+  overlayText?: string | null;
+  whyTheseComps?: string | null;
+  playbookSummary?: string | null;
+  competitors?: Competitor[];
   image?: { dataUrl: string; bytes: number };
   upload?: { key: string; publicUrl: string | null } | null;
   r2Configured?: boolean;
 };
 
+function formatViews(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1000)}K`;
+  return String(n);
+}
+
 export default function Home() {
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
 
@@ -24,18 +48,31 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setPhase("Mystery Thumb Agent scanning collection…");
+    const phaseTimer = window.setTimeout(
+      () => setPhase("Matching top 5 competitor thumbs + teaching format…"),
+      2500,
+    );
+    const phaseTimer2 = window.setTimeout(
+      () => setPhase("Rendering gpt-image-2 high 16:9…"),
+      9000,
+    );
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, notes }),
+        body: JSON.stringify({ title, notes, useAgent: true }),
       });
       const data = (await res.json()) as GenerateResponse;
       if (!res.ok) throw new Error(data.error || "Generation failed");
       setResult(data);
+      setPhase("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
+      setPhase("");
     } finally {
+      window.clearTimeout(phaseTimer);
+      window.clearTimeout(phaseTimer2);
       setLoading(false);
     }
   }
@@ -56,13 +93,20 @@ export default function Home() {
           <Link href="/library" className="text-[var(--muted)] hover:text-[var(--ink)]">
             R2 Library
           </Link>
+          <Link href="/agent" className="text-[var(--muted)] hover:text-[var(--ink)]">
+            Mystery Agent
+          </Link>
         </div>
         <p className="font-[family-name:var(--font-display)] text-5xl font-extrabold tracking-tight text-[var(--ink)] sm:text-7xl">
           Mlin Auto Thumb
         </p>
-        <p className="anim-rise-delay mt-4 max-w-xl text-base text-[var(--muted)] sm:text-lg">
-          Drop a title. We reason with gpt-5.6-terra, then render a high-quality
-          16:9 still on gpt-image-2.
+        <p className="anim-rise-delay mt-3 text-sm font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
+          Mystery Thumb Agent
+        </p>
+        <p className="anim-rise-delay mt-4 max-w-2xl text-base text-[var(--muted)] sm:text-lg">
+          Trained on your 40K+ competitor database. Submit a title — it finds the
+          closest viral thumbs, copies the winning format, and renders a
+          16:9 high still.
         </p>
       </header>
 
@@ -78,7 +122,7 @@ export default function Home() {
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Why this city vanished overnight"
+            placeholder="Scientists Opened a Sealed Chamber in the Amazon — What They Found…"
             className="w-full border border-[var(--line)] bg-black/25 px-4 py-3 text-lg text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />
         </label>
@@ -91,7 +135,7 @@ export default function Home() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="Cold night, lone figure, documentary still, no text in frame…"
+            placeholder="Prefer face + artifact, red circle callout, no long text…"
             className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 text-base text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />
         </label>
@@ -102,13 +146,15 @@ export default function Home() {
             disabled={loading || !title.trim()}
             className="bg-[var(--accent)] px-6 py-3 font-[family-name:var(--font-display)] text-base font-bold tracking-wide text-[var(--accent-ink)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {loading ? "Rendering…" : "Make thumbnail"}
+            {loading ? "Agent working…" : "Make thumbnail"}
           </button>
           {loading ? (
-            <span className="busy-bar text-sm text-[var(--muted)]">
-              ContactBox · terra → image-2 high
+            <span className="busy-bar text-sm text-[var(--muted)]">{phase}</span>
+          ) : (
+            <span className="text-sm text-[var(--muted)]">
+              terra playbook → top 5 comps → image-2 high
             </span>
-          ) : null}
+          )}
         </div>
       </form>
 
@@ -119,7 +165,7 @@ export default function Home() {
       ) : null}
 
       {result?.image?.dataUrl ? (
-        <section className="relative z-10 mt-12 grid gap-6 border-t border-[var(--line)] pt-10">
+        <section className="relative z-10 mt-12 grid gap-8 border-t border-[var(--line)] pt-10">
           <div className="overflow-hidden border border-[var(--line)] bg-black/40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -128,16 +174,89 @@ export default function Home() {
               className="aspect-video w-full object-cover"
             />
           </div>
+
+          {(result.analysis || result.chosenFormat) && (
+            <div className="grid gap-4 border border-[var(--line)] bg-black/20 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
+                Mystery Thumb Agent
+              </p>
+              {result.chosenFormat ? (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Chosen format
+                  </p>
+                  <p className="mt-1 text-sm">{result.chosenFormat}</p>
+                </div>
+              ) : null}
+              {result.overlayText ? (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Overlay text
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">{result.overlayText}</p>
+                </div>
+              ) : null}
+              {result.analysis ? (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Analysis
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-[var(--ink)]/90">
+                    {result.analysis}
+                  </p>
+                </div>
+              ) : null}
+              {result.whyTheseComps ? (
+                <p className="text-sm text-[var(--muted)]">{result.whyTheseComps}</p>
+              ) : null}
+            </div>
+          )}
+
+          {result.competitors && result.competitors.length > 0 ? (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                Top 5 closest competitor thumbs
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                {result.competitors.map((c) => (
+                  <a
+                    key={c.youtubeId}
+                    href={c.videoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group overflow-hidden border border-[var(--line)] bg-black/25 transition hover:border-[var(--accent)]/50"
+                  >
+                    <div className="relative aspect-video bg-black/50">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={c.thumbnailUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute bottom-1 right-1 bg-black/75 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+                        {formatViews(c.viewCount)}
+                      </span>
+                    </div>
+                    <p className="line-clamp-3 p-2 text-[11px] leading-snug text-[var(--ink)]/90">
+                      {c.title}
+                    </p>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {result.prompt ? (
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Prompt
+                Image prompt
               </p>
               <p className="mt-2 text-sm leading-relaxed text-[var(--ink)]/90">
                 {result.prompt}
               </p>
             </div>
           ) : null}
+
           {result.upload?.publicUrl ? (
             <a
               href={result.upload.publicUrl}
@@ -147,10 +266,6 @@ export default function Home() {
             >
               Open on R2 →
             </a>
-          ) : result.r2Configured === false ? (
-            <p className="text-sm text-[var(--muted)]">
-              Saved in-browser only — R2 upload needs Access Key ID + bucket.
-            </p>
           ) : null}
         </section>
       ) : null}

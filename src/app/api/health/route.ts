@@ -41,5 +41,10 @@ export async function GET() {
       accountId: r2.accountId ? `${r2.accountId.slice(0, 6)}…` : "",
       publicBaseUrl: r2.publicBaseUrl || null,
     },
+    agent: {
+      name: "mystery-thumb-agent",
+      reasoningModel: contactbox.reasoningModel,
+      imageModel: contactbox.imageModel,
+    },
   });
 }

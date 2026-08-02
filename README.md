@@ -31,4 +31,13 @@ npm run dev
 - `GET /api/collection` — indexed titles (`q`, `channel`, `sort`, `page`)
 - `POST /api/collection/seed` — upsert `data/collection.json`
 - `GET /api/library` — R2-mirrored titles/thumbnails
+- `GET /api/agent/status` — Mystery Thumb Agent training status
+- `POST /api/agent/playbook` — retrain (vision-scan viral vs low thumbs + rebuild playbook)
 - Public R2 index: `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/index.json`
+- Agent playbook: `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/mystery-playbook.json`
+
+## Mystery Thumb Agent
+
+1. Scans competitor titles/views + real thumbnail vision (gpt-5.6-terra)
+2. Builds a viral vs low-view playbook
+3. On title submit: finds top 5 closest comps → chooses format/text → renders gpt-image-2 high 16:9

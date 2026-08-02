@@ -101,6 +101,9 @@ export default function LibraryPage() {
             <Link href="/collection" className="text-[var(--muted)] hover:text-[var(--ink)]">
               Collection
             </Link>
+            <Link href="/agent" className="text-[var(--muted)] hover:text-[var(--ink)]">
+              Mystery Agent
+            </Link>
             <span className="text-[var(--accent)]">R2 Library</span>
           </div>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight sm:text-5xl">

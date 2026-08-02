@@ -9,7 +9,8 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:seed": "tsx scripts/seed-collection.ts",
-    "r2:upload-collection": "tsx scripts/upload-collection-r2.ts"
+    "r2:upload-collection": "tsx scripts/upload-collection-r2.ts",
+    "agent:playbook": "tsx scripts/build-mystery-playbook.ts"
   },
   "engines": {
     "node": ">=20"

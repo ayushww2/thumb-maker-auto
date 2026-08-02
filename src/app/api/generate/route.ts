@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  craftThumbnailPrompt,
-  generateThumbnailImage,
-} from "@/lib/contactbox";
+import { generateThumbnailImage } from "@/lib/contactbox";
 import { getR2Config } from "@/lib/env";
+import { generateWithMysteryAgent } from "@/lib/mysteryThumbAgent";
 import { uploadThumbnail } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +12,7 @@ type Body = {
   notes?: string;
   prompt?: string;
   skipUpload?: boolean;
+  useAgent?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -21,19 +20,33 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Body;
     const title = body.title?.trim();
     const notes = body.notes?.trim();
-    let prompt = body.prompt?.trim();
+    const useAgent = body.useAgent !== false;
 
-    if (!prompt) {
-      if (!title) {
-        return NextResponse.json(
-          { error: "Provide title (or an explicit prompt)" },
-          { status: 400 },
-        );
-      }
-      prompt = await craftThumbnailPrompt({ title, notes });
+    if (!title && !body.prompt?.trim()) {
+      return NextResponse.json(
+        { error: "Provide title (or an explicit prompt)" },
+        { status: 400 },
+      );
     }
 
-    const image = await generateThumbnailImage(prompt);
+    let prompt = body.prompt?.trim() || "";
+    let agentPayload: Awaited<
+      ReturnType<typeof generateWithMysteryAgent>
+    >["brief"] | null = null;
+    let image: Buffer;
+
+    if (useAgent && title && !body.prompt?.trim()) {
+      const result = await generateWithMysteryAgent({ title, notes });
+      agentPayload = result.brief;
+      prompt = result.brief.imagePrompt;
+      image = result.image;
+    } else {
+      if (!prompt) {
+        return NextResponse.json({ error: "Prompt required" }, { status: 400 });
+      }
+      image = await generateThumbnailImage(prompt);
+    }
+
     const dataUrl = `data:image/png;base64,${image.toString("base64")}`;
 
     let upload: { key: string; bucket: string; publicUrl: string | null } | null =
@@ -45,7 +58,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      agent: agentPayload?.agent || null,
       prompt,
+      analysis: agentPayload?.analysis || null,
+      chosenFormat: agentPayload?.chosenFormat || null,
+      overlayText: agentPayload?.overlayText || null,
+      whyTheseComps: agentPayload?.whyTheseComps || null,
+      competitors: agentPayload?.competitors || [],
+      playbookSummary: agentPayload?.playbook.summary || null,
       image: {
         contentType: "image/png",
         dataUrl,

@@ -33,6 +33,7 @@ model Video {
   uploadDate      String?
   channelId       String
   channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  thumbScan       ThumbScan?
   indexedAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -40,4 +41,47 @@ model Video {
   @@index([title])
   @@index([channelId, viewCount])
   @@index([r2ThumbnailUrl])
+}
+
+/// Mystery Thumb Agent visual + title lesson for one competitor video
+model ThumbScan {
+  id            String   @id @default(cuid())
+  videoId       String   @unique
+  video         Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  tier          String // viral | mid | low
+  subject       String?
+  composition   String?
+  colors        String?
+  overlayText   String?
+  emotionalHook String?
+  formatLabel   String?
+  whyItWorks    String?
+  rawNotes      String
+  model         String
+  scannedAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tier])
+}
+
+model AgentPlaybook {
+  id               String   @id @default("mystery-thumb-agent")
+  agent            String   @default("mystery-thumb-agent")
+  summary          String
+  viralPatterns    Json
+  lowViewPatterns  Json
+  thumbnailFormats Json
+  titleFormulas    Json
+  doList           Json
+  dontList         Json
+  viralThreshold   Int
+  lowThreshold     Int
+  sampleSize       Int
+  viralCount       Int
+  lowCount         Int
+  scanCount        Int      @default(0)
+  r2Key            String?
+  r2Url            String?
+  generatedAt      DateTime
+  updatedAt        DateTime @updatedAt
 }
