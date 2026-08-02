@@ -30,3 +30,5 @@ npm run dev
 - `POST /api/generate` — `{ title, notes?, prompt?, skipUpload? }`
 - `GET /api/collection` — indexed titles (`q`, `channel`, `sort`, `page`)
 - `POST /api/collection/seed` — upsert `data/collection.json`
+- `GET /api/library` — R2-mirrored titles/thumbnails
+- Public R2 index: `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/index.json`

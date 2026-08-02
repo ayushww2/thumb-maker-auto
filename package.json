@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "db:seed": "tsx scripts/seed-collection.ts"
+    "db:seed": "tsx scripts/seed-collection.ts",
+    "r2:upload-collection": "tsx scripts/upload-collection-r2.ts"
   },
   "engines": {
     "node": ">=20"

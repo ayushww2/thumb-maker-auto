@@ -53,6 +53,9 @@ export default function Home() {
           <Link href="/collection" className="text-[var(--muted)] hover:text-[var(--ink)]">
             Collection Database
           </Link>
+          <Link href="/library" className="text-[var(--muted)] hover:text-[var(--ink)]">
+            R2 Library
+          </Link>
         </div>
         <p className="font-[family-name:var(--font-display)] text-5xl font-extrabold tracking-tight text-[var(--ink)] sm:text-7xl">
           Mlin Auto Thumb

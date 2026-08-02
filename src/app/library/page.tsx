@@ -8,23 +8,21 @@ type Channel = {
   name: string;
   handle: string;
   url: string;
-  videoCount: number;
+  videoCount?: number;
 };
 
-type Video = {
+type LibraryVideo = {
   id: string;
   youtubeId: string;
   title: string;
   viewCount: number;
-  thumbnailUrl: string;
-  thumbnailUrlHq?: string | null;
-  r2ThumbnailUrl?: string | null;
-  displayThumbnailUrl?: string;
   videoUrl: string;
+  thumbnailUrl: string | null;
+  r2Key: string | null;
   channel: Channel;
 };
 
-type CollectionResponse = {
+type LibraryResponse = {
   ok?: boolean;
   error?: string;
   page: number;
@@ -34,9 +32,11 @@ type CollectionResponse = {
   q: string;
   channel: string;
   sort: string;
-  stats: { videos: number; maxViews: number; sumViews: number; channels: number };
+  publicBaseUrl: string | null;
+  indexUrl: string | null;
+  stats: { mirrored: number; channels: number };
   channels: Channel[];
-  videos: Video[];
+  videos: LibraryVideo[];
 };
 
 function formatViews(n: number): string {
@@ -45,13 +45,13 @@ function formatViews(n: number): string {
   return String(n);
 }
 
-export default function CollectionPage() {
+export default function LibraryPage() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [channel, setChannel] = useState("");
   const [sort, setSort] = useState("views");
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<CollectionResponse | null>(null);
+  const [data, setData] = useState<LibraryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +65,6 @@ export default function CollectionPage() {
       page: String(page),
       pageSize: "24",
       sort,
-      minViews: "40000",
     });
     if (debouncedQ) params.set("q", debouncedQ);
     if (channel) params.set("channel", channel);
@@ -76,12 +75,12 @@ export default function CollectionPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/collection?${queryString}`);
-      const json = (await res.json()) as CollectionResponse;
-      if (!res.ok) throw new Error(json.error || "Failed to load collection");
+      const res = await fetch(`/api/library?${queryString}`);
+      const json = (await res.json()) as LibraryResponse;
+      if (!res.ok) throw new Error(json.error || "Failed to load R2 library");
       setData(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load collection");
+      setError(err instanceof Error ? err.message : "Failed to load R2 library");
     } finally {
       setLoading(false);
     }
@@ -99,37 +98,41 @@ export default function CollectionPage() {
             <Link href="/" className="text-[var(--muted)] hover:text-[var(--ink)]">
               Generate
             </Link>
-            <span className="text-[var(--accent)]">Collection Database</span>
-            <Link href="/library" className="text-[var(--muted)] hover:text-[var(--ink)]">
-              R2 Library
+            <Link href="/collection" className="text-[var(--muted)] hover:text-[var(--ink)]">
+              Collection
             </Link>
+            <span className="text-[var(--accent)]">R2 Library</span>
           </div>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight sm:text-5xl">
-            Collection Database
+            R2 Title Library
           </h1>
           <p className="mt-3 max-w-2xl text-[var(--muted)]">
-            Indexed titles, view counts, and thumbnails from scanned channels
-            (40K+ views).
+            Titles and thumbnails mirrored to Cloudflare R2 — served from your
+            public bucket URL.
           </p>
+          {data?.indexUrl ? (
+            <a
+              href={data.indexUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block text-sm text-[var(--accent)] underline-offset-4 hover:underline"
+            >
+              Open collection/index.json →
+            </a>
+          ) : null}
         </div>
         {data?.stats ? (
-          <div className="grid grid-cols-3 gap-4 text-right">
+          <div className="grid grid-cols-2 gap-6 text-right">
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Videos</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">On R2</p>
               <p className="font-[family-name:var(--font-display)] text-2xl font-bold">
-                {data.stats.videos}
+                {data.stats.mirrored}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Channels</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Showing</p>
               <p className="font-[family-name:var(--font-display)] text-2xl font-bold">
-                {data.stats.channels}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Top views</p>
-              <p className="font-[family-name:var(--font-display)] text-2xl font-bold">
-                {formatViews(data.stats.maxViews)}
+                {data.total}
               </p>
             </div>
           </div>
@@ -147,7 +150,7 @@ export default function CollectionPage() {
               setPage(1);
               setQ(e.target.value);
             }}
-            placeholder="python, sphinx, florida…"
+            placeholder="Search mirrored titles…"
             className="border border-[var(--line)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
         </label>
@@ -166,7 +169,7 @@ export default function CollectionPage() {
             <option value="">All channels</option>
             {(data?.channels || []).map((c) => (
               <option key={c.id} value={c.handle}>
-                {c.name} ({c.videoCount})
+                {c.name}
               </option>
             ))}
           </select>
@@ -185,7 +188,7 @@ export default function CollectionPage() {
           >
             <option value="views">Most views</option>
             <option value="title">Title A–Z</option>
-            <option value="newest">Recently indexed</option>
+            <option value="newest">Recently mirrored</option>
           </select>
         </label>
       </div>
@@ -198,7 +201,10 @@ export default function CollectionPage() {
 
       <section className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {loading && !data ? (
-          <p className="text-[var(--muted)]">Loading indexed titles…</p>
+          <p className="text-[var(--muted)]">Loading R2 library…</p>
+        ) : null}
+        {!loading && data && data.videos.length === 0 ? (
+          <p className="text-[var(--muted)]">No mirrored thumbnails yet.</p>
         ) : null}
         {(data?.videos || []).map((video) => (
           <article
@@ -207,27 +213,29 @@ export default function CollectionPage() {
           >
             <a href={video.videoUrl} target="_blank" rel="noreferrer" className="block">
               <div className="relative aspect-video overflow-hidden bg-black/50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={video.displayThumbnailUrl || video.r2ThumbnailUrl || video.thumbnailUrl}
-                  alt=""
-                  className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                  onError={(e) => {
-                    const el = e.currentTarget;
-                    if (video.thumbnailUrlHq && el.src !== video.thumbnailUrlHq) {
-                      el.src = video.thumbnailUrlHq;
-                    }
-                  }}
-                />
+                {video.thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={video.thumbnailUrl}
+                    alt=""
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                  />
+                ) : null}
                 <span className="absolute bottom-2 right-2 bg-black/75 px-2 py-1 text-xs font-semibold text-[var(--accent)]">
-                  {formatViews(video.viewCount)} views
+                  {formatViews(video.viewCount)}
+                </span>
+                <span className="absolute left-2 top-2 bg-[var(--accent)] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[var(--accent-ink)]">
+                  R2
                 </span>
               </div>
               <div className="grid gap-2 p-4">
-                <h2 className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--ink)]">
-                  {video.title}
-                </h2>
+                <h2 className="line-clamp-2 text-sm font-semibold leading-snug">{video.title}</h2>
                 <p className="text-xs text-[var(--muted)]">{video.channel.name}</p>
+                {video.r2Key ? (
+                  <p className="truncate font-mono text-[10px] text-[var(--muted)]/80">
+                    {video.r2Key}
+                  </p>
+                ) : null}
               </div>
             </a>
           </article>
@@ -245,7 +253,7 @@ export default function CollectionPage() {
             Previous
           </button>
           <p className="text-sm text-[var(--muted)]">
-            Page {data.page} / {data.totalPages} · {data.total} titles
+            Page {data.page} / {data.totalPages} · {data.total} on R2
           </p>
           <button
             type="button"

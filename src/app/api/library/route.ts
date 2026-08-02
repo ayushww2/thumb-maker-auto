@@ -3,20 +3,17 @@ import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-const MIN_VIEWS_DEFAULT = 40_000;
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
     const channel = (searchParams.get("channel") || "").trim();
-    const minViews = Number(searchParams.get("minViews") || MIN_VIEWS_DEFAULT);
     const page = Math.max(1, Number(searchParams.get("page") || 1));
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") || 24)));
     const sort = searchParams.get("sort") || "views";
 
     const where = {
-      viewCount: { gte: Number.isFinite(minViews) ? minViews : MIN_VIEWS_DEFAULT },
+      r2ThumbnailUrl: { not: null },
       ...(channel
         ? {
             channel: {
@@ -35,10 +32,10 @@ export async function GET(req: NextRequest) {
       sort === "title"
         ? { title: "asc" as const }
         : sort === "newest"
-          ? { indexedAt: "desc" as const }
+          ? { updatedAt: "desc" as const }
           : { viewCount: "desc" as const };
 
-    const [total, videos, channels, stats] = await Promise.all([
+    const [total, videos, channels, mirrored] = await Promise.all([
       prisma.video.count({ where }),
       prisma.video.findMany({
         where,
@@ -47,27 +44,15 @@ export async function GET(req: NextRequest) {
         take: pageSize,
         include: {
           channel: {
-            select: { id: true, name: true, handle: true, url: true, channelId: true },
+            select: { id: true, name: true, handle: true, url: true },
           },
         },
       }),
       prisma.channel.findMany({
         orderBy: { videoCount: "desc" },
-        select: {
-          id: true,
-          name: true,
-          handle: true,
-          url: true,
-          videoCount: true,
-          channelId: true,
-        },
+        select: { id: true, name: true, handle: true, url: true, videoCount: true },
       }),
-      prisma.video.aggregate({
-        where: { viewCount: { gte: MIN_VIEWS_DEFAULT } },
-        _count: true,
-        _max: { viewCount: true },
-        _sum: { viewCount: true },
-      }),
+      prisma.video.count({ where: { r2ThumbnailUrl: { not: null } } }),
     ]);
 
     return NextResponse.json({
@@ -78,24 +63,30 @@ export async function GET(req: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
       q,
       channel,
-      minViews,
       sort,
+      publicBaseUrl: process.env.R2_PUBLIC_URL || null,
+      indexUrl: process.env.R2_PUBLIC_URL
+        ? `${process.env.R2_PUBLIC_URL.replace(/\/$/, "")}/collection/index.json`
+        : null,
       stats: {
-        videos: stats._count,
-        maxViews: stats._max.viewCount || 0,
-        sumViews: stats._sum.viewCount || 0,
+        mirrored,
         channels: channels.length,
       },
       channels,
       videos: videos.map((v) => ({
-        ...v,
-        // Prefer R2 mirror when available
-        displayThumbnailUrl: v.r2ThumbnailUrl || v.thumbnailUrl,
+        id: v.id,
+        youtubeId: v.youtubeId,
+        title: v.title,
+        viewCount: v.viewCount,
+        videoUrl: v.videoUrl,
+        r2Key: v.r2Key,
+        thumbnailUrl: v.r2ThumbnailUrl,
+        channel: v.channel,
       })),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Collection query failed";
-    console.error("[collection]", message);
+    const message = err instanceof Error ? err.message : "Library query failed";
+    console.error("[library]", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

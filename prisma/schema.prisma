@@ -26,6 +26,8 @@ model Video {
   viewCount       Int
   thumbnailUrl    String
   thumbnailUrlHq  String?
+  r2Key           String?
+  r2ThumbnailUrl  String?
   videoUrl        String
   durationSeconds Int?
   uploadDate      String?
@@ -37,4 +39,5 @@ model Video {
   @@index([viewCount])
   @@index([title])
   @@index([channelId, viewCount])
+  @@index([r2ThumbnailUrl])
 }
