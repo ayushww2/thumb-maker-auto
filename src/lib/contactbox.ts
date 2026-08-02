@@ -136,10 +136,12 @@ export async function generateThumbnailFromReference(input: {
   // YouTube-native 16:9 (not 1536x1024 which is 3:2)
   form.append("size", "1280x720");
   form.append("quality", getImageQuality());
+  // File + Uint8Array is more reliable than Blob(Buffer) in Node/undici
   form.append(
     "image",
-    new Blob([refBytes], { type: contentType }),
-    `format-ref.${ext}`,
+    new File([new Uint8Array(refBytes)], `format-ref.${ext}`, {
+      type: contentType,
+    }),
   );
 
   const base = getContactBoxBaseUrl().replace(/\/$/, "");

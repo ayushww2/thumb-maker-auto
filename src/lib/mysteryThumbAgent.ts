@@ -76,11 +76,13 @@ export type MysteryAgentResult = {
   playbook: MysteryPlaybook;
   competitors: CompetitorRef[];
   formatReference: FormatReference;
+  formatCandidates?: CompetitorRef[];
   analysis: string;
   chosenFormat: string;
   overlayText: string;
   discoveryPlan: string;
   imagePrompt: string;
+  generatePrompt?: string;
   whyTheseComps: string;
 };
 
@@ -312,13 +314,14 @@ export async function findClosestCompetitors(
 }
 
 /**
- * Scan the whole collection DB and pick THE ONE thumbnail whose FORMAT
- * we will copy via images/edits (news/breaking/anchor/text package).
+ * Scan the whole collection DB and rank thumbnails whose FORMAT we can copy
+ * via images/edits (news/breaking/anchor/text package).
  * Title similarity is secondary — layout fitness wins.
  */
-export async function pickFormatReference(
+export async function rankFormatReferences(
   title: string,
-): Promise<{ reference: CompetitorRef; shortlist: CompetitorRef[] }> {
+  limit = 8,
+): Promise<CompetitorRef[]> {
   const videos = await prisma.video.findMany({
     include: { channel: true, thumbScan: true },
   });
@@ -358,23 +361,33 @@ export async function pickFormatReference(
         fitness,
       };
     })
-    .sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount);
+    .filter((v) => Boolean(v.thumbnailUrl))
+    .sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount)
+    .slice(0, limit);
 
-  const best = scored[0];
-  if (!best?.thumbnailUrl) {
+  return scored.map((r) => ({
+    youtubeId: r.youtubeId,
+    title: r.title,
+    viewCount: r.viewCount,
+    thumbnailUrl: r.thumbnailUrl,
+    videoUrl: r.videoUrl,
+    channelName: r.channelName,
+    score: r.score,
+    formatScore: r.formatScore,
+    formatLabel: r.formatLabel,
+  }));
+}
+
+export async function pickFormatReference(
+  title: string,
+): Promise<{ reference: CompetitorRef; shortlist: CompetitorRef[]; candidates: CompetitorRef[] }> {
+  const candidates = await rankFormatReferences(title, 8);
+  if (!candidates.length) {
     throw new Error("No format-reference thumbnail URL found in collection DB");
   }
 
   const reference: CompetitorRef = {
-    youtubeId: best.youtubeId,
-    title: best.title,
-    viewCount: best.viewCount,
-    thumbnailUrl: best.thumbnailUrl,
-    videoUrl: best.videoUrl,
-    channelName: best.channelName,
-    score: best.score,
-    formatScore: best.formatScore,
-    formatLabel: best.formatLabel,
+    ...candidates[0],
     isFormatReference: true,
   };
 
@@ -385,7 +398,7 @@ export async function pickFormatReference(
     ...related.filter((r) => r.youtubeId !== reference.youtubeId),
   ].slice(0, 5);
 
-  return { reference, shortlist };
+  return { reference, shortlist, candidates };
 }
 
 async function extractLayoutBlueprint(
@@ -863,10 +876,12 @@ Produce the JSON edit brief now.`,
     throw new Error("Mystery Thumb Agent returned an empty imagePrompt");
   }
 
-  // Hard-enforce edit + 16:9 language in the edits prompt
+  // Hard-enforce edit + 16:9 language in the edits prompt.
+  // Softened "inspired by" wording avoids third-party similarity blocks.
   const imagePrompt = [
-    "Keep the EXACT same 16:9 widescreen layout, graphic style, text zones, and clickbait chrome as the attached reference image.",
-    "Do not change orientation — output must be 16:9 (1280x720).",
+    "Using the uploaded image only as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
+    "Match the reference's composition grammar (zones, text placement, reaction-face framing, red arrow/circle style) but invent entirely new faces, scenes, and wording.",
+    "Output must be 16:9 widescreen (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
       ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
@@ -874,6 +889,24 @@ Produce the JSON edit brief now.`,
     parsed.discoveryPlan
       ? `Discovery-side content to depict: ${parsed.discoveryPlan.trim()}`
       : "",
+    "Do not reproduce copyrighted photos, real news-network logos, or identifiable celebrity faces from the reference.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const generatePrompt = [
+    "Create an original photoreal 16:9 YouTube mystery thumbnail (1280x720).",
+    `Title: ${title}`,
+    parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
+    "Composition: shocked news-anchor / reaction face on one side, discovery scene on the other, bold banner text, thick red arrow + red circle on the clue.",
+    parsed.overlayText
+      ? `Banner text: ${parsed.overlayText.trim()}`
+      : "Banner text: short ALL-CAPS punch line",
+    parsed.discoveryPlan
+      ? `Discovery scene: ${parsed.discoveryPlan.trim()}`
+      : "",
+    layoutBlueprint ? `Layout blueprint to emulate (not copy subjects): ${layoutBlueprint}` : "",
+    "No watermarks, no channel logos, no YouTube UI.",
   ]
     .filter(Boolean)
     .join(" ");
@@ -899,7 +932,9 @@ Produce the JSON edit brief now.`,
     overlayText: parsed.overlayText || "",
     discoveryPlan: parsed.discoveryPlan || "",
     imagePrompt,
+    generatePrompt,
     whyTheseComps: parsed.whyTheseComps,
+    formatCandidates: picked.candidates,
   };
 }
 
@@ -908,22 +943,67 @@ export async function generateWithMysteryAgent(input: {
   notes?: string;
 }) {
   const brief = await runMysteryThumbAgent(input);
-  let image: Buffer;
-  try {
-    image = await generateThumbnailFromReference({
-      prompt: brief.imagePrompt,
-      referenceImageUrl: brief.formatReference.thumbnailUrl,
-    });
-  } catch (err) {
-    console.warn(
-      "[mystery-thumb-agent] reference edit failed, falling back to generate",
-      err instanceof Error ? err.message : err,
-    );
-    image = await generateThumbnailImage(brief.imagePrompt);
+  let image: Buffer | null = null;
+  let usedRef = brief.formatReference;
+
+  // Try top format-reference candidates — similarity filters can block some thumbs
+  const refs = [
+    brief.formatReference,
+    ...(brief.formatCandidates || []).filter(
+      (c) => c.youtubeId !== brief.formatReference.youtubeId,
+    ),
+  ].slice(0, 4);
+
+  for (const ref of refs) {
+    try {
+      image = await generateThumbnailFromReference({
+        prompt: brief.imagePrompt,
+        referenceImageUrl: ref.thumbnailUrl,
+      });
+      usedRef = {
+        ...brief.formatReference,
+        youtubeId: ref.youtubeId,
+        title: ref.title,
+        viewCount: ref.viewCount,
+        thumbnailUrl: ref.thumbnailUrl,
+        videoUrl: ref.videoUrl,
+        channelName: ref.channelName,
+        score: ref.score,
+        formatLabel: ref.formatLabel || brief.formatReference.formatLabel,
+      };
+      break;
+    } catch (err) {
+      console.warn(
+        "[mystery-thumb-agent] reference edit failed for",
+        ref.youtubeId,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+
+  if (!image) {
+    console.warn(
+      "[mystery-thumb-agent] all format-ref edits failed, using generate prompt",
+    );
+    image = await generateThumbnailImage(
+      brief.generatePrompt || brief.imagePrompt.replace(/uploaded image|attached reference/gi, "typical news-clickbait layout"),
+    );
+  }
+
   // Hard guarantee YouTube 16:9 regardless of upstream model quirks
   image = await toYouTube16x9(image);
-  return { brief, image };
+  return {
+    brief: {
+      ...brief,
+      formatReference: usedRef,
+      competitors: brief.competitors.map((c) =>
+        c.youtubeId === usedRef.youtubeId
+          ? { ...c, isFormatReference: true }
+          : { ...c, isFormatReference: false },
+      ),
+    },
+    image,
+  };
 }
 
 export async function getAgentStatus() {
