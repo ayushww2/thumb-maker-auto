@@ -39,7 +39,9 @@
     "Discovery location wide shot: a massive single subject such as a shipwreck, desert herd, prison island, lakebed, or chamber fills most of the image; title carries the narrative.",
     "Clean scandal still: one provocative, recognizable TV or celebrity image with no added copy; visual implication plus title does the work.",
     "Crime reveal composite: iconic suspect face on one side, apparent recovery or investigation scene on the other, joined by a single thick arrow and optional short declarative banner.",
-    "Use high local contrast rather than universal clutter: blue ocean versus yellow arrow, gold artifact versus dark excavation, cyan scan versus brown stone, or red alert element versus neutral environment."
+    "Use high local contrast rather than universal clutter: blue ocean versus yellow arrow, gold artifact versus dark excavation, cyan scan versus brown stone, or red alert element versus neutral environment.",
+    "News-realism clickbait split: LEFT shocked TV news anchor close-up; RIGHT photoreal discovery scene; THICK red arrow + RED circle on the clue; bold blue banner with 3–6 word ALL-CAPS punch line; optional white ticker strip.",
+    "Breaking-news package: red/white BREAKING badge, anchor reaction, evidence scene, saturated red callout arrow/circle, short banner text that adds a new claim not already in the face."
   ],
   "titleFormulas": [
     "[Authority] Finally Solved the [famous mystery] in [current year]",
@@ -67,7 +69,10 @@
     "Use one bright accent color for the clue or annotation, with a strong neutral or natural background behind it.",
     "Use faces as reaction amplifiers, not as decoration; the face must point emotionally toward a visible mystery object.",
     "Write titles with a recognizable noun, a decisive verb, and a withheld consequence.",
-    "Maintain enough plausibility that viewers can believe the image might be evidence, even when the premise is sensational."
+    "Maintain enough plausibility that viewers can believe the image might be evidence, even when the premise is sensational.",
+    "For diver/sealed-door/discovery titles, DEFAULT to news-realism clickbait: anchor face + discovery scene + thick red arrow/circle + short banner text.",
+    "Make clickbait graphics look REAL and thick (YouTube red arrow/circle), never thin decorative lines.",
+    "Always put readable short ALL-CAPS text on a solid banner for mystery discovery packages."
   ],
   "dontList": [
     "Do not cover the lower third with repeated title text, multiple tickers, fake logos, weather details, or generic alerts.",
@@ -81,7 +86,9 @@
     "Do not repeat the same claim in title and banner; use the image to introduce a new clue.",
     "Do not obscure the hero subject with giant text blocks or let annotations compete with each other.",
     "Do not use an unrecognizable face as the primary hook unless their relevance is visually obvious.",
-    "Do not make the cause of the mystery invisible; show the creature, sealed entry, scan result, suspicious object, or forbidden footage that creates the question."
+    "Do not make the cause of the mystery invisible; show the creature, sealed entry, scan result, suspicious object, or forbidden footage that creates the question.",
+    "Do not generate a clean cinematic poster with no text, no arrow, and no human reaction for discovery titles.",
+    "Do not use faint yellow hairlines instead of thick red clickbait arrows."
   ],
   "visualLessons": [
     {

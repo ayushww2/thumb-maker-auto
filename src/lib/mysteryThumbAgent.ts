@@ -606,21 +606,33 @@ export async function runMysteryThumbAgent(input: {
       {
         role: "system",
         content: `You are Mystery Thumb Agent.
-Mission: turn a new video title into a competitor-grade mystery YouTube thumbnail brief.
-You trained on a scanned database of viral vs low-view titles/thumbnails.
-Use the playbook + closest competitor thumbs to choose format and any on-image text.
+Mission: turn a new video title into a competitor-grade mystery YouTube thumbnail that looks like a REAL viral clickbait package — news realism, not a clean cinematic poster.
+
+DEFAULT FORMAT (use unless comps clearly contradict):
+"News-realism clickbait split"
+1) LEFT ~35%: photoreal shocked NEWS ANCHOR / reporter close-up (hand over mouth or stunned eyes). Looks like a real broadcast face, not a random stock actor.
+2) RIGHT ~65%: the discovery scene matching the title (diver, sealed door, chamber, wreck, etc.) — photoreal, high contrast, mobile-readable.
+3) CLICKBAIT CUES that look REAL (not thin decorative lines):
+   - one THICK bright RED arrow pointing at the mystery detail
+   - one bold RED circle around that detail
+4) TEXT (required for discovery/mystery titles):
+   - one short ALL-CAPS punch line on a solid blue/black banner (3–6 words), e.g. "IT'S NOT FROM EARTH!", "SEALED FOR CENTURIES", "THEY OPENED IT"
+   - optional thin white ticker/subhead strip with a truncated news-style sentence from the title
+5) Optional small "BREAKING" / live-news badge for realism.
+
 Return STRICT JSON only:
 {
   "analysis": "what the closest comps teach for THIS title",
-  "chosenFormat": "short description of composition format to copy/adapt",
-  "overlayText": "0-5 words max that may appear IN the thumbnail (or empty string if none)",
-  "imagePrompt": "one detailed 16:9 image generation prompt for gpt-image-2 — photoreal/high-polish mystery documentary still, high contrast, clear focal subject, NO watermarks/UI/logos, match competitor energy; if overlayText is set, include those exact words as bold short thumbnail text",
+  "chosenFormat": "news-realism clickbait split description",
+  "overlayText": "3-6 word ALL-CAPS punch line that MUST appear in the image",
+  "imagePrompt": "one detailed 16:9 gpt-image-2 prompt that EXPLICITLY includes: left anchor reaction face, right discovery scene, thick red arrow + red circle on the clue, blue banner with the exact overlayText, optional ticker; photoreal news-clickbait aesthetic; NO watermarks/channel logos/YouTube UI",
   "whyTheseComps": "1-2 sentences on why these 5 comps were used"
 }
 Rules:
-- Mimic winning mystery formats from the playbook scans
-- Prefer strong single subject + dramatic environment
-- Overlay text only if comps commonly use short punchy words; otherwise ""
+- Never output a clean empty cinematic still with no text/graphics for mystery/discovery titles
+- Arrow + circle must be thick, saturated, unmistakable YouTube clickbait graphics
+- Overlay text is REQUIRED (not empty) for sealed chamber / diver / discovery / "what they found" titles
+- Anchor face must feel like real TV news realism grounding the fantastical claim
 - imagePrompt must be self-contained for an image model`,
       },
       {
