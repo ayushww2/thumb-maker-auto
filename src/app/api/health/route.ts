@@ -10,9 +10,15 @@ export async function GET() {
   const r2 = getR2Config();
   let dbOk = false;
   let videoCount = 0;
+  let jobCount = 0;
+  let runningJobs = 0;
 
   try {
     videoCount = await prisma.video.count();
+    jobCount = await prisma.job.count();
+    runningJobs = await prisma.job.count({
+      where: { status: { in: ["queued", "running"] } },
+    });
     dbOk = true;
   } catch {
     dbOk = false;
@@ -34,6 +40,8 @@ export async function GET() {
       configured: Boolean(process.env.DATABASE_URL),
       ok: dbOk,
       videos: videoCount,
+      jobs: jobCount,
+      activeJobs: runningJobs,
     },
     r2: {
       configured: r2.configured,

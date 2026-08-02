@@ -99,6 +99,9 @@ export default function CollectionPage() {
             <Link href="/" className="text-[var(--muted)] hover:text-[var(--ink)]">
               Generate
             </Link>
+            <Link href="/jobs" className="text-[var(--muted)] hover:text-[var(--ink)]">
+              Past Jobs
+            </Link>
             <span className="text-[var(--accent)]">Collection Database</span>
             <Link href="/library" className="text-[var(--muted)] hover:text-[var(--ink)]">
               R2 Library

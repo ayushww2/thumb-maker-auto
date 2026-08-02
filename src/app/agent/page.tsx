@@ -74,6 +74,9 @@ export default function AgentPage() {
         <Link href="/" className="text-[var(--muted)] hover:text-[var(--ink)]">
           Generate
         </Link>
+        <Link href="/jobs" className="text-[var(--muted)] hover:text-[var(--ink)]">
+          Past Jobs
+        </Link>
         <Link href="/collection" className="text-[var(--muted)] hover:text-[var(--ink)]">
           Collection
         </Link>

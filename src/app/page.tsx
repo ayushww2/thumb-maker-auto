@@ -2,77 +2,37 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-
-type Competitor = {
-  youtubeId: string;
-  title: string;
-  viewCount: number;
-  thumbnailUrl: string;
-  videoUrl: string;
-  channelName: string;
-  score: number;
-};
-
-type GenerateResponse = {
-  ok?: boolean;
-  error?: string;
-  agent?: string | null;
-  prompt?: string;
-  analysis?: string | null;
-  chosenFormat?: string | null;
-  overlayText?: string | null;
-  whyTheseComps?: string | null;
-  playbookSummary?: string | null;
-  competitors?: Competitor[];
-  image?: { dataUrl: string; bytes: number };
-  upload?: { key: string; publicUrl: string | null } | null;
-  r2Configured?: boolean;
-};
-
-function formatViews(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1000)}K`;
-  return String(n);
-}
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
-  const [phase, setPhase] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<GenerateResponse | null>(null);
+  const [queuedId, setQueuedId] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setResult(null);
-    setPhase("Mystery Thumb Agent scanning collection…");
-    const phaseTimer = window.setTimeout(
-      () => setPhase("Matching top 5 competitor thumbs + teaching format…"),
-      2500,
-    );
-    const phaseTimer2 = window.setTimeout(
-      () => setPhase("Rendering gpt-image-2 high 16:9…"),
-      9000,
-    );
+    setQueuedId(null);
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, notes, useAgent: true }),
       });
-      const data = (await res.json()) as GenerateResponse;
-      if (!res.ok) throw new Error(data.error || "Generation failed");
-      setResult(data);
-      setPhase("");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to queue job");
+      setQueuedId(data.job.id);
+      setTitle("");
+      setNotes("");
+      // Jump to past jobs so user can watch progress in background
+      router.push(`/jobs?selected=${data.job.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
-      setPhase("");
+      setError(err instanceof Error ? err.message : "Failed to queue job");
     } finally {
-      window.clearTimeout(phaseTimer);
-      window.clearTimeout(phaseTimer2);
       setLoading(false);
     }
   }
@@ -87,6 +47,9 @@ export default function Home() {
       <header className="anim-rise relative z-10">
         <div className="mb-6 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.18em]">
           <span className="text-[var(--accent)]">Generate</span>
+          <Link href="/jobs" className="text-[var(--muted)] hover:text-[var(--ink)]">
+            Past Jobs
+          </Link>
           <Link href="/collection" className="text-[var(--muted)] hover:text-[var(--ink)]">
             Collection Database
           </Link>
@@ -104,9 +67,8 @@ export default function Home() {
           Mystery Thumb Agent
         </p>
         <p className="anim-rise-delay mt-4 max-w-2xl text-base text-[var(--muted)] sm:text-lg">
-          Trained on your 40K+ competitor database. Submit a title — it finds the
-          closest viral thumbs, copies the winning format, and renders a
-          16:9 high still.
+          Submit a title — the job keeps running in the background. Watch it under
+          Past Jobs while the agent matches comps and renders the still.
         </p>
       </header>
 
@@ -146,15 +108,11 @@ export default function Home() {
             disabled={loading || !title.trim()}
             className="bg-[var(--accent)] px-6 py-3 font-[family-name:var(--font-display)] text-base font-bold tracking-wide text-[var(--accent-ink)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {loading ? "Agent working…" : "Make thumbnail"}
+            {loading ? "Queuing…" : "Queue thumbnail job"}
           </button>
-          {loading ? (
-            <span className="busy-bar text-sm text-[var(--muted)]">{phase}</span>
-          ) : (
-            <span className="text-sm text-[var(--muted)]">
-              terra playbook → top 5 comps → image-2 high
-            </span>
-          )}
+          <span className="text-sm text-[var(--muted)]">
+            Runs in background · opens Past Jobs
+          </span>
         </div>
       </form>
 
@@ -164,110 +122,13 @@ export default function Home() {
         </p>
       ) : null}
 
-      {result?.image?.dataUrl ? (
-        <section className="relative z-10 mt-12 grid gap-8 border-t border-[var(--line)] pt-10">
-          <div className="overflow-hidden border border-[var(--line)] bg-black/40">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={result.image.dataUrl}
-              alt="Generated thumbnail"
-              className="aspect-video w-full object-cover"
-            />
-          </div>
-
-          {(result.analysis || result.chosenFormat) && (
-            <div className="grid gap-4 border border-[var(--line)] bg-black/20 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-                Mystery Thumb Agent
-              </p>
-              {result.chosenFormat ? (
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                    Chosen format
-                  </p>
-                  <p className="mt-1 text-sm">{result.chosenFormat}</p>
-                </div>
-              ) : null}
-              {result.overlayText ? (
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                    Overlay text
-                  </p>
-                  <p className="mt-1 text-sm font-semibold">{result.overlayText}</p>
-                </div>
-              ) : null}
-              {result.analysis ? (
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                    Analysis
-                  </p>
-                  <p className="mt-1 text-sm leading-relaxed text-[var(--ink)]/90">
-                    {result.analysis}
-                  </p>
-                </div>
-              ) : null}
-              {result.whyTheseComps ? (
-                <p className="text-sm text-[var(--muted)]">{result.whyTheseComps}</p>
-              ) : null}
-            </div>
-          )}
-
-          {result.competitors && result.competitors.length > 0 ? (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Top 5 closest competitor thumbs
-              </p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                {result.competitors.map((c) => (
-                  <a
-                    key={c.youtubeId}
-                    href={c.videoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group overflow-hidden border border-[var(--line)] bg-black/25 transition hover:border-[var(--accent)]/50"
-                  >
-                    <div className="relative aspect-video bg-black/50">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={c.thumbnailUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                      <span className="absolute bottom-1 right-1 bg-black/75 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
-                        {formatViews(c.viewCount)}
-                      </span>
-                    </div>
-                    <p className="line-clamp-3 p-2 text-[11px] leading-snug text-[var(--ink)]/90">
-                      {c.title}
-                    </p>
-                  </a>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {result.prompt ? (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Image prompt
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--ink)]/90">
-                {result.prompt}
-              </p>
-            </div>
-          ) : null}
-
-          {result.upload?.publicUrl ? (
-            <a
-              href={result.upload.publicUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
-            >
-              Open on R2 →
-            </a>
-          ) : null}
-        </section>
+      {queuedId ? (
+        <p className="relative z-10 mt-6 text-sm text-[var(--accent)]">
+          Job queued.{" "}
+          <Link href={`/jobs?selected=${queuedId}`} className="underline underline-offset-4">
+            View in Past Jobs →
+          </Link>
+        </p>
       ) : null}
     </main>
   );
