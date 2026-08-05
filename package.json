@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:seed": "tsx scripts/seed-collection.ts",
     "r2:upload-collection": "tsx scripts/upload-collection-r2.ts",
-    "agent:playbook": "tsx scripts/build-mystery-playbook.ts"
+    "agent:playbook": "tsx scripts/build-mystery-playbook.ts",
+    "contactbox:test": "tsx scripts/test-contactbox.ts"
   },
   "engines": {
     "node": ">=20"

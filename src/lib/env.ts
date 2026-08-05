@@ -18,7 +18,8 @@ export function getOpenAIBaseUrl(): string {
 }
 
 export function getReasoningModel(): string {
-  return process.env.CONTACTBOX_REASONING_MODEL || "gpt-5.5";
+  // ContactBox recommended Codex/reasoning model
+  return process.env.CONTACTBOX_REASONING_MODEL || "gpt-5.6-terra";
 }
 
 export function getImageModel(): string {
@@ -39,7 +40,17 @@ export function getReasoningModelFallbacks(): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return [...new Set([primary, ...extra, "gpt-5.5", "gpt-4o", "gpt-4o-mini"])];
+  return [
+    ...new Set([
+      primary,
+      ...extra,
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+    ]),
+  ];
 }
 
 export function getImageModelFallbacks(): string[] {
