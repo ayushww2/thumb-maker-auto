@@ -107,11 +107,13 @@ export async function probeContactBoxApi(): Promise<ApiProbeResult> {
       const client = createContactBoxClient();
       const listed = await client.models.list();
       const availableModels = listed.data.map((m) => m.id);
-      const reasoningCandidates = getReasoningModelFallbacks().filter((m) =>
-        availableModels.includes(m),
-      );
+      const preferred = getReasoningModel();
+      const reasoningCandidates = [
+        preferred,
+        ...getReasoningModelFallbacks().filter((m) => m !== preferred),
+      ].filter((m) => availableModels.includes(m));
       const reasoningModel =
-        reasoningCandidates[0] || getReasoningModelFallbacks()[0];
+        reasoningCandidates[0] || preferred;
 
       await client.chat.completions.create({
         model: reasoningModel,
