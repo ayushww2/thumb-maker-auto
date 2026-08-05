@@ -11,7 +11,9 @@ export function getContactBoxBaseUrl(): string {
 }
 
 export function getReasoningModel(): string {
-  return process.env.CONTACTBOX_REASONING_MODEL || "gpt-5.6-terra";
+  // ContactBox currently exposes gpt-5.5. gpt-5.6-terra has no available
+  // channel in its default distributor group.
+  return process.env.CONTACTBOX_REASONING_MODEL || "gpt-5.5";
 }
 
 export function getImageModel(): string {
