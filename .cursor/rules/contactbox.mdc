@@ -1,0 +1,12 @@
+---
+description: ContactBoxTools API usage for this repo
+alwaysApply: false
+---
+
+- ContactBox is OpenAI-compatible at `https://api.contactboxtools.me/v1`
+- Credentials live in env: `CONTACTBOX_API_KEY`, never hardcode keys
+- Reasoning model: `gpt-5.6-terra` (fallbacks: `gpt-5.6-sol`, `gpt-5.5`)
+- Image model: `gpt-image-2` at `1280x720`
+- Use `src/lib/contactbox.ts` helpers (`createReasoningCompletion`, `generateThumbnailImage`)
+- Test connection: `npm run contactbox:test`
+- If errors mention deleted token group, user must create a new token at https://api.contactboxtools.me/console with seller-assigned Token Group

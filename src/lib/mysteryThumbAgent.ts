@@ -1,0 +1,1121 @@
+import { mkdir, readFile, writeFile } from "fs/promises";
+import path from "path";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { prisma } from "@/lib/db";
+import {
+  createReasoningCompletion,
+  generateThumbnailFromReference,
+  generateThumbnailImage,
+} from "@/lib/contactbox";
+import { getR2Config, getReasoningModel } from "@/lib/env";
+import { toYouTube16x9 } from "@/lib/imageSize";
+import { scoreCompetitor } from "@/lib/textSimilarity";
+
+export type CompetitorRef = {
+  youtubeId: string;
+  title: string;
+  viewCount: number;
+  thumbnailUrl: string;
+  videoUrl: string;
+  channelName: string;
+  score: number;
+  formatScore?: number;
+  formatLabel?: string | null;
+  isFormatReference?: boolean;
+};
+
+export type ThumbScanLesson = {
+  youtubeId: string;
+  title: string;
+  viewCount: number;
+  tier: "viral" | "low";
+  subject: string;
+  composition: string;
+  colors: string;
+  overlayText: string;
+  emotionalHook: string;
+  formatLabel: string;
+  whyItWorks: string;
+  thumbnailUrl: string;
+};
+
+export type MysteryPlaybook = {
+  generatedAt: string;
+  sampleSize: number;
+  viralThreshold: number;
+  lowThreshold: number;
+  viralCount: number;
+  lowCount: number;
+  scanCount: number;
+  summary: string;
+  viralPatterns: string[];
+  lowViewPatterns: string[];
+  thumbnailFormats: string[];
+  titleFormulas: string[];
+  doList: string[];
+  dontList: string[];
+  visualLessons: ThumbScanLesson[];
+  r2Url?: string | null;
+};
+
+export type FormatReference = {
+  youtubeId: string;
+  title: string;
+  viewCount: number;
+  thumbnailUrl: string;
+  videoUrl: string;
+  channelName: string;
+  score: number;
+  formatLabel: string;
+  layoutBlueprint: string;
+};
+
+export type MysteryAgentResult = {
+  agent: "mystery-thumb-agent";
+  title: string;
+  playbook: MysteryPlaybook;
+  competitors: CompetitorRef[];
+  formatReference: FormatReference;
+  formatCandidates?: CompetitorRef[];
+  analysis: string;
+  chosenFormat: string;
+  overlayText: string;
+  discoveryPlan: string;
+  anchorPlan: string;
+  imagePrompt: string;
+  generatePrompt?: string;
+  whyTheseComps: string;
+};
+
+const PLAYBOOK_PATH = path.join(process.cwd(), "data", "mystery-playbook.json");
+const VIRAL_VIEWS = 500_000;
+const LOW_VIEWS = 80_000;
+const SCAN_PER_TIER = 12;
+
+function extractJson<T>(text: string): T {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const raw = (fenced?.[1] || text).trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("Agent returned no JSON object");
+  return JSON.parse(raw.slice(start, end + 1)) as T;
+}
+
+async function loadCachedPlaybook(): Promise<MysteryPlaybook | null> {
+  try {
+    const fromDb = await prisma.agentPlaybook.findUnique({
+      where: { id: "mystery-thumb-agent" },
+    });
+    if (fromDb?.summary) {
+      return {
+        generatedAt: fromDb.generatedAt.toISOString(),
+        sampleSize: fromDb.sampleSize,
+        viralThreshold: fromDb.viralThreshold,
+        lowThreshold: fromDb.lowThreshold,
+        viralCount: fromDb.viralCount,
+        lowCount: fromDb.lowCount,
+        scanCount: fromDb.scanCount,
+        summary: fromDb.summary,
+        viralPatterns: fromDb.viralPatterns as string[],
+        lowViewPatterns: fromDb.lowViewPatterns as string[],
+        thumbnailFormats: fromDb.thumbnailFormats as string[],
+        titleFormulas: fromDb.titleFormulas as string[],
+        doList: fromDb.doList as string[],
+        dontList: fromDb.dontList as string[],
+        visualLessons: [],
+        r2Url: fromDb.r2Url,
+      };
+    }
+  } catch {
+    // DB table may not exist yet during first boot
+  }
+  try {
+    const raw = await readFile(PLAYBOOK_PATH, "utf8");
+    return JSON.parse(raw) as MysteryPlaybook;
+  } catch {
+    return null;
+  }
+}
+
+async function savePlaybookLocal(playbook: MysteryPlaybook) {
+  await mkdir(path.dirname(PLAYBOOK_PATH), { recursive: true });
+  await writeFile(PLAYBOOK_PATH, JSON.stringify(playbook, null, 2));
+}
+
+async function persistPlaybook(playbook: MysteryPlaybook) {
+  await savePlaybookLocal(playbook);
+
+  await prisma.agentPlaybook.upsert({
+    where: { id: "mystery-thumb-agent" },
+    create: {
+      id: "mystery-thumb-agent",
+      agent: "mystery-thumb-agent",
+      summary: playbook.summary,
+      viralPatterns: playbook.viralPatterns,
+      lowViewPatterns: playbook.lowViewPatterns,
+      thumbnailFormats: playbook.thumbnailFormats,
+      titleFormulas: playbook.titleFormulas,
+      doList: playbook.doList,
+      dontList: playbook.dontList,
+      viralThreshold: playbook.viralThreshold,
+      lowThreshold: playbook.lowThreshold,
+      sampleSize: playbook.sampleSize,
+      viralCount: playbook.viralCount,
+      lowCount: playbook.lowCount,
+      scanCount: playbook.scanCount,
+      r2Url: playbook.r2Url || null,
+      generatedAt: new Date(playbook.generatedAt),
+    },
+    update: {
+      summary: playbook.summary,
+      viralPatterns: playbook.viralPatterns,
+      lowViewPatterns: playbook.lowViewPatterns,
+      thumbnailFormats: playbook.thumbnailFormats,
+      titleFormulas: playbook.titleFormulas,
+      doList: playbook.doList,
+      dontList: playbook.dontList,
+      viralThreshold: playbook.viralThreshold,
+      lowThreshold: playbook.lowThreshold,
+      sampleSize: playbook.sampleSize,
+      viralCount: playbook.viralCount,
+      lowCount: playbook.lowCount,
+      scanCount: playbook.scanCount,
+      r2Url: playbook.r2Url || null,
+      generatedAt: new Date(playbook.generatedAt),
+    },
+  });
+
+  const r2 = getR2Config();
+  if (r2.configured) {
+    const key = "collection/mystery-playbook.json";
+    const client = new S3Client({
+      region: "auto",
+      endpoint: r2.endpoint,
+      credentials: {
+        accessKeyId: r2.accessKeyId,
+        secretAccessKey: r2.secretAccessKey,
+      },
+    });
+    await client.send(
+      new PutObjectCommand({
+        Bucket: r2.bucket,
+        Key: key,
+        Body: Buffer.from(JSON.stringify(playbook, null, 2)),
+        ContentType: "application/json; charset=utf-8",
+        CacheControl: "public, max-age=300",
+      }),
+    );
+    playbook.r2Url = `${r2.publicBaseUrl}/${key}`;
+    await prisma.agentPlaybook.update({
+      where: { id: "mystery-thumb-agent" },
+      data: { r2Key: key, r2Url: playbook.r2Url },
+    });
+    await savePlaybookLocal(playbook);
+  }
+}
+
+function newsFormatFitness(parts: {
+  title?: string | null;
+  formatLabel?: string | null;
+  overlayText?: string | null;
+  composition?: string | null;
+  subject?: string | null;
+  rawNotes?: string | null;
+}): number {
+  const blob = [
+    parts.title,
+    parts.formatLabel,
+    parts.overlayText,
+    parts.composition,
+    parts.subject,
+    parts.rawNotes,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  let score = 0;
+  if (/breaking|news|anchor|broadcast|reporter|ticker|cnn|fox|msnbc|bbc/.test(blob))
+    score += 0.4;
+  if (/face|reaction|shocked|hand over|anchor/.test(blob)) score += 0.2;
+  if (/banner|text|caption|headline|breaking/.test(blob) || (parts.overlayText || "").trim())
+    score += 0.2;
+  if (/arrow|circle|callout/.test(blob)) score += 0.15;
+  if (/split|left|right/.test(blob)) score += 0.1;
+  return Math.min(1, score);
+}
+
+export async function findClosestCompetitors(
+  title: string,
+  limit = 5,
+): Promise<CompetitorRef[]> {
+  const videos = await prisma.video.findMany({
+    include: { channel: true, thumbScan: true },
+  });
+
+  const ranked = videos
+    .map((v) => {
+      const score = scoreCompetitor({
+        query: title,
+        title: v.title,
+        viewCount: v.viewCount,
+      });
+      const formatScore = newsFormatFitness({
+        title: v.title,
+        formatLabel: v.thumbScan?.formatLabel,
+        overlayText: v.thumbScan?.overlayText,
+        composition: v.thumbScan?.composition,
+        subject: v.thumbScan?.subject,
+        rawNotes: v.thumbScan?.rawNotes,
+      });
+      return {
+        youtubeId: v.youtubeId,
+        title: v.title,
+        viewCount: v.viewCount,
+        thumbnailUrl: v.r2ThumbnailUrl || v.thumbnailUrl,
+        videoUrl: v.videoUrl,
+        channelName: v.channel.name,
+        score,
+        formatScore,
+        formatLabel: v.thumbScan?.formatLabel || null,
+      };
+    })
+    .filter((v) => v.score > 0.04)
+    .sort((a, b) => b.score - a.score || b.viewCount - a.viewCount)
+    .slice(0, Math.max(limit, 12));
+
+  if (ranked.length < limit) {
+    const top = [...videos]
+      .sort((a, b) => b.viewCount - a.viewCount)
+      .slice(0, limit)
+      .map((v) => ({
+        youtubeId: v.youtubeId,
+        title: v.title,
+        viewCount: v.viewCount,
+        thumbnailUrl: v.r2ThumbnailUrl || v.thumbnailUrl,
+        videoUrl: v.videoUrl,
+        channelName: v.channel.name,
+        score: 0.04,
+        formatScore: newsFormatFitness({
+          title: v.title,
+          formatLabel: v.thumbScan?.formatLabel,
+          overlayText: v.thumbScan?.overlayText,
+          composition: v.thumbScan?.composition,
+          subject: v.thumbScan?.subject,
+          rawNotes: v.thumbScan?.rawNotes,
+        }),
+        formatLabel: v.thumbScan?.formatLabel || null,
+      }));
+    const seen = new Set(ranked.map((r) => r.youtubeId));
+    for (const t of top) {
+      if (!seen.has(t.youtubeId)) ranked.push(t);
+    }
+  }
+
+  return ranked.slice(0, limit);
+}
+
+function hashString(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Diverse reaction-face bank so jobs never reuse the same blonde-anchor default. */
+const ANCHOR_PERSONAS = [
+  "Black man in his 40s, short salt-and-pepper beard, navy blazer, stunned open-mouth reaction",
+  "Latina woman in her 30s, dark wavy hair, burgundy blouse, hand covering mouth in shock",
+  "East Asian man in his mid-30s, wire glasses, charcoal suit, wide-eyed disbelief",
+  "White man in his 50s, gray temples, teal dress shirt, leaning forward horrified",
+  "South Asian woman in her late 20s, black bob, cream blazer, gasping with hand on chest",
+  "Middle Eastern man in his 40s, trimmed beard, black turtleneck, intense worried stare",
+  "Black woman in her mid-30s, natural curls, emerald green blazer, shocked mid-report look",
+  "White woman in her 60s, silver short hair, pearl earrings, pale stunned expression",
+  "Hispanic man in his late 20s, faded undercut, olive field jacket, flashlight-lit fear face",
+  "Filipino woman in her 40s, glasses on head, mustard cardigan, covering mouth in horror",
+  "White man in his early 30s, ginger stubble, flannel shirt, looking off-frame terrified",
+  "Nigerian woman in her late 30s, braided updo, wine-red blazer, urgent breaking-news face",
+];
+
+function uniqueAnchorPersona(title: string): string {
+  const idx = hashString(title.toLowerCase().trim()) % ANCHOR_PERSONAS.length;
+  return ANCHOR_PERSONAS[idx];
+}
+
+/**
+ * Scan the whole collection DB and rank thumbnails whose FORMAT we can copy
+ * via images/edits (news/breaking/anchor/text package).
+ * Title similarity is secondary — layout fitness wins.
+ */
+export async function rankFormatReferences(
+  title: string,
+  limit = 12,
+): Promise<CompetitorRef[]> {
+  const videos = await prisma.video.findMany({
+    include: { channel: true, thumbScan: true },
+  });
+  if (!videos.length) {
+    throw new Error("No competitor thumbnails found to copy format from");
+  }
+
+  const scored = videos
+    .map((v) => {
+      const titleScore = scoreCompetitor({
+        query: title,
+        title: v.title,
+        viewCount: v.viewCount,
+      });
+      const formatScore = newsFormatFitness({
+        title: v.title,
+        formatLabel: v.thumbScan?.formatLabel,
+        overlayText: v.thumbScan?.overlayText,
+        composition: v.thumbScan?.composition,
+        subject: v.thumbScan?.subject,
+        rawNotes: v.thumbScan?.rawNotes,
+      });
+      const fitness =
+        formatScore * 0.7 +
+        titleScore * 0.15 +
+        Math.min(0.15, Math.log10(v.viewCount + 1) / 45);
+      return {
+        youtubeId: v.youtubeId,
+        title: v.title,
+        viewCount: v.viewCount,
+        thumbnailUrl: v.r2ThumbnailUrl || v.thumbnailUrl,
+        videoUrl: v.videoUrl,
+        channelName: v.channel.name,
+        score: titleScore,
+        formatScore,
+        formatLabel: v.thumbScan?.formatLabel || null,
+        fitness,
+      };
+    })
+    .filter((v) => Boolean(v.thumbnailUrl))
+    .sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount)
+    .slice(0, limit);
+
+  return scored.map((r) => ({
+    youtubeId: r.youtubeId,
+    title: r.title,
+    viewCount: r.viewCount,
+    thumbnailUrl: r.thumbnailUrl,
+    videoUrl: r.videoUrl,
+    channelName: r.channelName,
+    score: r.score,
+    formatScore: r.formatScore,
+    formatLabel: r.formatLabel,
+  }));
+}
+
+async function recentlyUsedFormatRefIds(limit = 10): Promise<Set<string>> {
+  try {
+    const recent = await prisma.job.findMany({
+      where: {
+        status: "completed",
+        formatRefYoutubeId: { not: null },
+      },
+      orderBy: { completedAt: "desc" },
+      take: limit,
+      select: { formatRefYoutubeId: true },
+    });
+    return new Set(
+      recent
+        .map((j) => j.formatRefYoutubeId)
+        .filter((id): id is string => Boolean(id)),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+export async function pickFormatReference(
+  title: string,
+): Promise<{ reference: CompetitorRef; shortlist: CompetitorRef[]; candidates: CompetitorRef[] }> {
+  const ranked = await rankFormatReferences(title, 12);
+  if (!ranked.length) {
+    throw new Error("No format-reference thumbnail URL found in collection DB");
+  }
+
+  // Rotate format templates across jobs so every title doesn't lock to the same face/ref
+  const usedRecently = await recentlyUsedFormatRefIds(10);
+  const fresh = ranked.filter((c) => !usedRecently.has(c.youtubeId));
+  const pool = fresh.length >= 2 ? fresh : ranked;
+  const pickIndex = hashString(title.toLowerCase().trim()) % pool.length;
+  const ordered = [
+    pool[pickIndex],
+    ...pool.filter((_, i) => i !== pickIndex),
+    ...ranked.filter((c) => !pool.some((p) => p.youtubeId === c.youtubeId)),
+  ];
+  const candidates = ordered.slice(0, 8);
+
+  const reference: CompetitorRef = {
+    ...candidates[0],
+    isFormatReference: true,
+  };
+
+  // Keep a small related shortlist for the jobs UI (format ref first)
+  const related = await findClosestCompetitors(title, 4);
+  const shortlist = [
+    reference,
+    ...related.filter((r) => r.youtubeId !== reference.youtubeId),
+  ].slice(0, 5);
+
+  return { reference, shortlist, candidates };
+}
+
+async function extractLayoutBlueprint(
+  reference: CompetitorRef,
+): Promise<string> {
+  const completion = await createReasoningCompletion({
+    temperature: 0.1,
+    max_tokens: 700,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
+Extract a precise LAYOUT BLUEPRINT to copy (positions/zones/graphics only).
+IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing of the person; only WHERE the reaction-face zone sits.
+- aspect (must be 16:9)
+- left/right/top/bottom zones with approximate %
+- reaction-face zone placement (not the person's identity)
+- where breaking-news badge / ticker / banner text sit (quote exact text styles)
+- where red arrow + circle sit and how thick they look
+- color blocks used for realism (blue banner, red accents, etc.)
+Return a tight bullet blueprint, no intro.`,
+          },
+          { type: "image_url", image_url: { url: reference.thumbnailUrl } },
+        ] as never,
+      },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content?.trim();
+  if (!text) throw new Error("Failed to extract layout blueprint from format reference");
+  return text;
+}
+
+async function scanOneThumb(input: {
+  youtubeId: string;
+  title: string;
+  viewCount: number;
+  thumbnailUrl: string;
+  videoDbId: string;
+  tier: "viral" | "low";
+}): Promise<ThumbScanLesson | null> {
+  try {
+    const completion = await createReasoningCompletion({
+      temperature: 0.2,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `You are Mystery Thumb Agent studying a competitor YouTube thumbnail.
+Title: ${input.title}
+Views: ${input.viewCount}
+Tier: ${input.tier}
+
+Return STRICT JSON only:
+{
+  "subject": "main subject(s)",
+  "composition": "layout / left-right-center / scale",
+  "colors": "color grade + contrast",
+  "overlayText": "exact on-image text or empty",
+  "emotionalHook": "curiosity/fear/awe hook",
+  "formatLabel": "short format name e.g. face+threat / sealed-chamber / AI-reveal",
+  "whyItWorks": "1-2 sentences on why this package works or fails for views"
+}`,
+            },
+            { type: "image_url", image_url: { url: input.thumbnailUrl } },
+          ] as never,
+        },
+      ],
+    });
+
+    const content = completion.choices[0]?.message?.content?.trim() || "";
+    const parsed = extractJson<{
+      subject: string;
+      composition: string;
+      colors: string;
+      overlayText: string;
+      emotionalHook: string;
+      formatLabel: string;
+      whyItWorks: string;
+    }>(content);
+
+    const lesson: ThumbScanLesson = {
+      youtubeId: input.youtubeId,
+      title: input.title,
+      viewCount: input.viewCount,
+      tier: input.tier,
+      subject: parsed.subject || "",
+      composition: parsed.composition || "",
+      colors: parsed.colors || "",
+      overlayText: parsed.overlayText || "",
+      emotionalHook: parsed.emotionalHook || "",
+      formatLabel: parsed.formatLabel || "",
+      whyItWorks: parsed.whyItWorks || "",
+      thumbnailUrl: input.thumbnailUrl,
+    };
+
+    const storedModel = getReasoningModel();
+    await prisma.thumbScan.upsert({
+      where: { videoId: input.videoDbId },
+      create: {
+        videoId: input.videoDbId,
+        tier: input.tier,
+        subject: lesson.subject,
+        composition: lesson.composition,
+        colors: lesson.colors,
+        overlayText: lesson.overlayText,
+        emotionalHook: lesson.emotionalHook,
+        formatLabel: lesson.formatLabel,
+        whyItWorks: lesson.whyItWorks,
+        rawNotes: content,
+        model: storedModel,
+      },
+      update: {
+        tier: input.tier,
+        subject: lesson.subject,
+        composition: lesson.composition,
+        colors: lesson.colors,
+        overlayText: lesson.overlayText,
+        emotionalHook: lesson.emotionalHook,
+        formatLabel: lesson.formatLabel,
+        whyItWorks: lesson.whyItWorks,
+        rawNotes: content,
+        model: storedModel,
+      },
+    });
+
+    return lesson;
+  } catch (err) {
+    console.warn(
+      `[mystery-thumb-agent] scan failed ${input.youtubeId}`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+async function scanTrainingThumbs(): Promise<ThumbScanLesson[]> {
+  const [viral, low] = await Promise.all([
+    prisma.video.findMany({
+      where: { viewCount: { gte: VIRAL_VIEWS }, r2ThumbnailUrl: { not: null } },
+      orderBy: { viewCount: "desc" },
+      take: SCAN_PER_TIER,
+    }),
+    prisma.video.findMany({
+      where: { viewCount: { lte: LOW_VIEWS }, r2ThumbnailUrl: { not: null } },
+      orderBy: { viewCount: "asc" },
+      take: SCAN_PER_TIER,
+    }),
+  ]);
+
+  const lessons: ThumbScanLesson[] = [];
+  const queue = [
+    ...viral.map((v) => ({ v, tier: "viral" as const })),
+    ...low.map((v) => ({ v, tier: "low" as const })),
+  ];
+
+  // sequential-ish with small concurrency to avoid rate limits
+  const concurrency = 3;
+  let idx = 0;
+  async function worker() {
+    while (idx < queue.length) {
+      const i = idx++;
+      const item = queue[i];
+      const lesson = await scanOneThumb({
+        youtubeId: item.v.youtubeId,
+        title: item.v.title,
+        viewCount: item.v.viewCount,
+        thumbnailUrl: item.v.r2ThumbnailUrl || item.v.thumbnailUrl,
+        videoDbId: item.v.id,
+        tier: item.tier,
+      });
+      if (lesson) lessons.push(lesson);
+      console.log(
+        `[mystery-thumb-agent] scanned ${lessons.length}/${queue.length} (${item.tier}) ${item.v.youtubeId}`,
+      );
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return lessons;
+}
+
+export async function buildMysteryPlaybook(force = false): Promise<MysteryPlaybook> {
+  if (!force) {
+    const cached = await loadCachedPlaybook();
+    if (cached?.summary) return cached;
+  }
+
+  const [viral, low, total, visualLessons] = await Promise.all([
+    prisma.video.findMany({
+      where: { viewCount: { gte: VIRAL_VIEWS } },
+      orderBy: { viewCount: "desc" },
+      take: 40,
+      include: { channel: true },
+    }),
+    prisma.video.findMany({
+      where: { viewCount: { lte: LOW_VIEWS } },
+      orderBy: { viewCount: "asc" },
+      take: 40,
+      include: { channel: true },
+    }),
+    prisma.video.count(),
+    scanTrainingThumbs(),
+  ]);
+
+  const viralLines = viral
+    .map(
+      (v, i) =>
+        `${i + 1}. [${(v.viewCount / 1_000_000).toFixed(2)}M] ${v.title} | thumb=${v.r2ThumbnailUrl || v.thumbnailUrl}`,
+    )
+    .join("\n");
+  const lowLines = low
+    .map(
+      (v, i) =>
+        `${i + 1}. [${Math.round(v.viewCount / 1000)}K] ${v.title} | thumb=${v.r2ThumbnailUrl || v.thumbnailUrl}`,
+    )
+    .join("\n");
+
+  const scanLines = visualLessons
+    .map(
+      (l, i) =>
+        `${i + 1}. [${l.tier}/${l.viewCount}] ${l.title}
+format=${l.formatLabel}
+subject=${l.subject}
+composition=${l.composition}
+colors=${l.colors}
+text="${l.overlayText}"
+hook=${l.emotionalHook}
+lesson=${l.whyItWorks}`,
+    )
+    .join("\n\n");
+
+  const completion = await createReasoningCompletion({
+    temperature: 0.35,
+    messages: [
+      {
+        role: "system",
+        content: `You are Mystery Thumb Agent — a YouTube mystery/documentary thumbnail strategist.
+You have studied titles, view counts, AND actual thumbnail vision scans.
+Return STRICT JSON only:
+{
+  "summary": "2-4 sentences on what makes these thumbs/titles win vs lose",
+  "viralPatterns": ["..."],
+  "lowViewPatterns": ["..."],
+  "thumbnailFormats": ["composition/format patterns observed in scans"],
+  "titleFormulas": ["title formula patterns"],
+  "doList": ["actionable rules for making viral mystery thumbs"],
+  "dontList": ["what weak/low-view thumbs do"]
+}
+Focus on mystery niche: Florida invasives, ancient discoveries, AI reveals, sealed chambers, horror-curiosity.
+Ground thumbnailFormats in the VISUAL SCAN NOTES (real composition/text/color), not guesses.`,
+      },
+      {
+        role: "user",
+        content: `Collection size: ${total} videos (40K+ views indexed).
+
+Viral title examples (>= ${VIRAL_VIEWS} views):
+${viralLines}
+
+Lower-performing examples (<= ${LOW_VIEWS} views):
+${lowLines}
+
+VISUAL SCAN NOTES (agent looked at the actual thumbnails):
+${scanLines || "(no scans)"}
+
+Build the Mystery Thumb Agent playbook JSON now.`,
+      },
+    ],
+  });
+
+  const content = completion.choices[0]?.message?.content?.trim() || "";
+  const parsed = extractJson<{
+    summary: string;
+    viralPatterns: string[];
+    lowViewPatterns: string[];
+    thumbnailFormats: string[];
+    titleFormulas: string[];
+    doList: string[];
+    dontList: string[];
+  }>(content);
+
+  const playbook: MysteryPlaybook = {
+    generatedAt: new Date().toISOString(),
+    sampleSize: total,
+    viralThreshold: VIRAL_VIEWS,
+    lowThreshold: LOW_VIEWS,
+    viralCount: viral.length,
+    lowCount: low.length,
+    scanCount: visualLessons.length,
+    summary: parsed.summary,
+    viralPatterns: parsed.viralPatterns || [],
+    lowViewPatterns: parsed.lowViewPatterns || [],
+    thumbnailFormats: parsed.thumbnailFormats || [],
+    titleFormulas: parsed.titleFormulas || [],
+    doList: parsed.doList || [],
+    dontList: parsed.dontList || [],
+    visualLessons,
+  };
+
+  await persistPlaybook(playbook);
+  return playbook;
+}
+
+async function describeCompetitorThumbs(comps: CompetitorRef[]): Promise<string> {
+  try {
+    const content: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `You are Mystery Thumb Agent. For each competitor thumbnail, describe in 1-2 bullets:
+subject, composition (left/right/center), color grade, any on-image text, emotional hook.
+Then note shared formats across the set. Be concrete.`,
+      },
+    ];
+    for (const [i, c] of comps.entries()) {
+      content.push({
+        type: "text",
+        text: `\n#${i + 1} ${c.viewCount.toLocaleString()} views — ${c.title}`,
+      });
+      content.push({
+        type: "image_url",
+        image_url: { url: c.thumbnailUrl },
+      });
+    }
+
+    const completion = await createReasoningCompletion({
+      temperature: 0.3,
+      max_tokens: 900,
+      messages: [{ role: "user", content: content as never }],
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text && text.length > 40) return text;
+  } catch (err) {
+    console.warn(
+      "[mystery-thumb-agent] vision describe failed, using titles only",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Fall back to stored scans when available
+  const ids = comps.map((c) => c.youtubeId);
+  const stored = await prisma.thumbScan.findMany({
+    where: { video: { youtubeId: { in: ids } } },
+    include: { video: true },
+  });
+  if (stored.length) {
+    return stored
+      .map(
+        (s) =>
+          `# ${s.video.title} (${s.video.viewCount})\nformat=${s.formatLabel}\nsubject=${s.subject}\ncomposition=${s.composition}\ntext=${s.overlayText}\nlesson=${s.whyItWorks}`,
+      )
+      .join("\n\n");
+  }
+
+  return comps
+    .map(
+      (c, i) =>
+        `#${i + 1} (${c.viewCount.toLocaleString()} views) ${c.title}\nthumb: ${c.thumbnailUrl}`,
+    )
+    .join("\n\n");
+}
+
+export async function runMysteryThumbAgent(input: {
+  title: string;
+  notes?: string;
+}): Promise<MysteryAgentResult> {
+  const title = input.title.trim();
+  if (!title) throw new Error("Title is required");
+
+  const [playbook, picked] = await Promise.all([
+    buildMysteryPlaybook(false),
+    pickFormatReference(title),
+  ]);
+
+  const { reference, shortlist } = picked;
+  const layoutBlueprint = await extractLayoutBlueprint(reference);
+  const competitors = shortlist.map((c) =>
+    c.youtubeId === reference.youtubeId ? { ...c, isFormatReference: true } : c,
+  );
+  const forcedAnchor = uniqueAnchorPersona(title);
+
+  const completion = await createReasoningCompletion({
+    temperature: 0.55,
+    messages: [
+      {
+        role: "system",
+        content: `You are Mystery Thumb Agent.
+You will EDIT a real competitor thumbnail used ONLY as a FORMAT / LAYOUT REFERENCE.
+Goal: keep that reference's 16:9 LAYOUT (zones, banner, arrow/circle placement) but REPLACE every person and every discovery subject with UNIQUE content for this title.
+
+CRITICAL UNIQUENESS RULES:
+- NEVER keep the reference person's face, hair, age, ethnicity, or clothes
+- NEVER default to a blonde female news anchor unless the forced persona is that
+- The reaction face MUST match the forced unique persona exactly
+- Discovery side must be unique to THIS title
+
+Return STRICT JSON only:
+{
+  "analysis": "why this format fits + how the unique persona + discovery sell the click",
+  "chosenFormat": "short name of the copied format",
+  "overlayText": "3-6 word ALL-CAPS punch line for the banner (required)",
+  "anchorPlan": "1 sentence restating the forced unique reaction-face persona (must match forced persona)",
+  "discoveryPlan": "concrete photoreal discovery-side content for THIS title (what object/scene/clue/lighting)",
+  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must say: use uploaded image only as layout template; completely replace the person with the forced unique persona; replace discovery side; set banner text; keep thick red arrow/circle style; 16:9 1280x720.",
+  "whyTheseComps": "1 sentence on why this format reference was chosen"
+}
+Rules:
+- COPY FORMAT / LAYOUT only — never copy faces or discovery subjects from the reference
+- Orientation MUST stay 16:9 widescreen
+- Discovery content must be photoreal and specific to the new title
+- Keep thick red arrow/circle energy if the reference has callouts
+- Banner text required`,
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `NEW TITLE: ${title}
+${input.notes?.trim() ? `EXTRA DIRECTION: ${input.notes.trim()}` : ""}
+
+FORCED UNIQUE REACTION FACE (MANDATORY — do not change):
+${forcedAnchor}
+
+FORMAT REFERENCE (COPY LAYOUT ONLY — REPLACE THE PERSON):
+${reference.title}
+views=${reference.viewCount} format=${reference.formatLabel || "n/a"}
+url=${reference.thumbnailUrl}
+
+LAYOUT BLUEPRINT EXTRACTED FROM REFERENCE:
+${layoutBlueprint}
+
+PLAYBOOK LEARNING (what to show for viral clickbait realism):
+SUMMARY: ${playbook.summary}
+VIRAL PATTERNS:
+${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
+DO:
+${playbook.doList.map((p) => `- ${p}`).join("\n")}
+DON'T:
+${playbook.dontList.map((p) => `- ${p}`).join("\n")}
+
+Produce the JSON edit brief now.`,
+          },
+          {
+            type: "image_url",
+            image_url: { url: reference.thumbnailUrl },
+          },
+        ] as never,
+      },
+    ],
+  });
+
+  const content = completion.choices[0]?.message?.content?.trim() || "";
+  const parsed = extractJson<{
+    analysis: string;
+    chosenFormat: string;
+    overlayText: string;
+    anchorPlan?: string;
+    discoveryPlan: string;
+    imagePrompt: string;
+    whyTheseComps: string;
+  }>(content);
+
+  if (!parsed.imagePrompt?.trim()) {
+    throw new Error("Mystery Thumb Agent returned an empty imagePrompt");
+  }
+
+  const anchorPlan = parsed.anchorPlan?.trim() || forcedAnchor;
+
+  // Hard-enforce layout-only copy + unique face + 16:9
+  const imagePrompt = [
+    `CRITICAL: Completely erase the reference person and put this NEW unique reaction face in that zone instead: ${forcedAnchor}.`,
+    "Keep only the LAYOUT from the uploaded image (zones, banner bar, red arrow/circle style, split composition).",
+    "Do NOT keep the reference face, hair, age, ethnicity, or clothes. No default blonde female news anchor unless that exact persona was forced above.",
+    `Sell ONLY this title: ${title}`,
+    "Output must be 16:9 widescreen (1280x720).",
+    parsed.imagePrompt.trim(),
+    parsed.overlayText
+      ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
+      : "",
+    `Reaction face must be: ${forcedAnchor}`,
+    parsed.discoveryPlan
+      ? `Discovery-side content for THIS title only: ${parsed.discoveryPlan.trim()}`
+      : "",
+    "Do not reproduce copyrighted photos, real news-network logos, or identifiable celebrity faces from the reference.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const generatePrompt = [
+    "Create an original photoreal 16:9 YouTube mystery thumbnail (1280x720).",
+    `Exact video title to sell (ignore any other story): ${title}`,
+    parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
+    `MANDATORY unique reaction face filling the left/face zone: ${forcedAnchor}`,
+    "The face zone MUST contain that person — never output a faceless landscape thumbnail.",
+    "Composition: unique shocked reaction face on one side, discovery scene matching ONLY this title on the other, bold banner text, thick red arrow + red circle on the clue.",
+    "Do NOT use a generic blonde female news anchor unless that is the forced persona.",
+    "Do NOT invent unrelated stories (horses, deserts, other celebrities) that are not in this title.",
+    parsed.overlayText
+      ? `Banner text: ${parsed.overlayText.trim()}`
+      : "Banner text: short ALL-CAPS punch line",
+    parsed.discoveryPlan
+      ? `Discovery scene for THIS title only: ${parsed.discoveryPlan.trim()}`
+      : "",
+    layoutBlueprint
+      ? `Layout blueprint to emulate (zones/graphics only — not faces/subjects): ${layoutBlueprint}`
+      : "",
+    "No watermarks, no channel logos, no YouTube UI.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    agent: "mystery-thumb-agent",
+    title,
+    playbook,
+    competitors,
+    formatReference: {
+      youtubeId: reference.youtubeId,
+      title: reference.title,
+      viewCount: reference.viewCount,
+      thumbnailUrl: reference.thumbnailUrl,
+      videoUrl: reference.videoUrl,
+      channelName: reference.channelName,
+      score: reference.score,
+      formatLabel: reference.formatLabel || "format-reference",
+      layoutBlueprint,
+    },
+    analysis: parsed.analysis,
+    chosenFormat: parsed.chosenFormat,
+    overlayText: parsed.overlayText || "",
+    discoveryPlan: parsed.discoveryPlan || "",
+    anchorPlan,
+    imagePrompt,
+    generatePrompt,
+    whyTheseComps: parsed.whyTheseComps,
+    formatCandidates: picked.candidates,
+  };
+}
+
+export async function generateWithMysteryAgent(input: {
+  title: string;
+  notes?: string;
+}) {
+  const brief = await runMysteryThumbAgent(input);
+  let image: Buffer | null = null;
+  let usedRef = brief.formatReference;
+  let usedEdit = false;
+
+  // Primary: edit from a ROTATED format ref so layout stays strong, but the
+  // prompt forces a title-unique persona (never keep the reference face).
+  const refs = [
+    brief.formatReference,
+    ...(brief.formatCandidates || []).filter(
+      (c) => c.youtubeId !== brief.formatReference.youtubeId,
+    ),
+  ].slice(0, 4);
+
+  for (const ref of refs) {
+    try {
+      image = await generateThumbnailFromReference({
+        prompt: brief.imagePrompt,
+        referenceImageUrl: ref.thumbnailUrl,
+      });
+      usedEdit = true;
+      usedRef = {
+        ...brief.formatReference,
+        youtubeId: ref.youtubeId,
+        title: ref.title,
+        viewCount: ref.viewCount,
+        thumbnailUrl: ref.thumbnailUrl,
+        videoUrl: ref.videoUrl,
+        channelName: ref.channelName,
+        score: ref.score,
+        formatLabel: ref.formatLabel || brief.formatReference.formatLabel,
+      };
+      break;
+    } catch (editErr) {
+      console.warn(
+        "[mystery-thumb-agent] reference edit failed for",
+        ref.youtubeId,
+        editErr instanceof Error ? editErr.message : editErr,
+      );
+    }
+  }
+
+  // Fallback: generate from blueprint + unique persona (no face paste from ref)
+  if (!image) {
+    console.warn(
+      "[mystery-thumb-agent] format-ref edits failed, using generate+blueprint",
+    );
+    image = await generateThumbnailImage(
+      brief.generatePrompt ||
+        brief.imagePrompt.replace(
+          /uploaded image|attached reference/gi,
+          "learned news-clickbait layout",
+        ),
+    );
+  }
+
+  console.log(
+    "[mystery-thumb-agent] rendered via",
+    usedEdit ? "format-ref-edit" : "generate+blueprint",
+    "anchor=",
+    brief.anchorPlan.slice(0, 80),
+  );
+
+  // Hard guarantee YouTube 16:9 regardless of upstream model quirks
+  image = await toYouTube16x9(image);
+  return {
+    brief: {
+      ...brief,
+      formatReference: usedRef,
+      competitors: brief.competitors.map((c) =>
+        c.youtubeId === usedRef.youtubeId
+          ? { ...c, isFormatReference: true }
+          : { ...c, isFormatReference: false },
+      ),
+    },
+    image,
+  };
+}
+
+export async function getAgentStatus() {
+  const [playbookRow, scanCount, videoCount] = await Promise.all([
+    prisma.agentPlaybook.findUnique({ where: { id: "mystery-thumb-agent" } }),
+    prisma.thumbScan.count(),
+    prisma.video.count(),
+  ]);
+  const filePlaybook = playbookRow ? null : await loadCachedPlaybook();
+  return {
+    agent: "mystery-thumb-agent",
+    trained: Boolean(playbookRow || filePlaybook?.summary),
+    videoCount,
+    scanCount,
+    playbook: playbookRow
+      ? {
+          summary: playbookRow.summary,
+          generatedAt: playbookRow.generatedAt,
+          sampleSize: playbookRow.sampleSize,
+          viralCount: playbookRow.viralCount,
+          lowCount: playbookRow.lowCount,
+          scanCount: playbookRow.scanCount,
+          r2Url: playbookRow.r2Url,
+          viralPatterns: playbookRow.viralPatterns,
+          thumbnailFormats: playbookRow.thumbnailFormats,
+        }
+      : filePlaybook,
+  };
+}

@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+:root {
+  --bg0: #0f1412;
+  --bg1: #1a2420;
+  --ink: #f4f7f2;
+  --muted: #a8b5aa;
+  --accent: #d6ff3f;
+  --accent-ink: #12180f;
+  --line: rgba(244, 247, 242, 0.12);
+  --danger: #ff6b4a;
+  --glow: rgba(214, 255, 63, 0.18);
+}
+
+@theme inline {
+  --color-background: var(--bg0);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 12% -10%, var(--glow), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(80, 140, 110, 0.22), transparent 50%),
+    linear-gradient(165deg, var(--bg1) 0%, var(--bg0) 55%, #0b100e 100%);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.anim-rise {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.anim-rise-delay {
+  animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+}
+
+.anim-rise-delay-2 {
+  animation: rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.22s both;
+}
+
+.busy-bar {
+  animation: pulse-line 1.2s ease-in-out infinite;
+}
