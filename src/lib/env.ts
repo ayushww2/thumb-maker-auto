@@ -1,23 +1,56 @@
 export function getContactBoxApiKey(): string {
-  return process.env.CONTACTBOX_API_KEY || process.env.OPENAI_API_KEY || "";
+  return process.env.CONTACTBOX_API_KEY || "";
+}
+
+export function getOpenAIApiKey(): string {
+  return process.env.OPENAI_API_KEY || "";
 }
 
 export function getContactBoxBaseUrl(): string {
   const raw =
-    process.env.CONTACTBOX_BASE_URL ||
-    process.env.OPENAI_BASE_URL ||
-    "https://api.contactboxtools.me/v1";
+    process.env.CONTACTBOX_BASE_URL || "https://api.contactboxtools.me/v1";
+  return raw.replace(/\/$/, "");
+}
+
+export function getOpenAIBaseUrl(): string {
+  const raw = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
   return raw.replace(/\/$/, "");
 }
 
 export function getReasoningModel(): string {
-  // ContactBox currently exposes gpt-5.5. gpt-5.6-terra has no available
-  // channel in its default distributor group.
   return process.env.CONTACTBOX_REASONING_MODEL || "gpt-5.5";
 }
 
 export function getImageModel(): string {
   return process.env.CONTACTBOX_IMAGE_MODEL || "gpt-image-2";
+}
+
+export function getOpenAIReasoningModel(): string {
+  return process.env.OPENAI_REASONING_MODEL || "gpt-4o";
+}
+
+export function getOpenAIImageModel(): string {
+  return process.env.OPENAI_IMAGE_MODEL || "dall-e-3";
+}
+
+export function getReasoningModelFallbacks(): string[] {
+  const primary = getReasoningModel();
+  const extra = (process.env.CONTACTBOX_REASONING_MODEL_FALLBACKS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...new Set([primary, ...extra, "gpt-5.5", "gpt-4o", "gpt-4o-mini"])];
+}
+
+export function getImageModelFallbacks(): string[] {
+  const primary = getImageModel();
+  const extra = (process.env.CONTACTBOX_IMAGE_MODEL_FALLBACKS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [
+    ...new Set([primary, ...extra, "gpt-image-2", "gpt-image-1", "dall-e-3"]),
+  ];
 }
 
 export function getImageQuality(): "low" | "medium" | "high" | "auto" {
@@ -28,7 +61,6 @@ export function getImageQuality(): "low" | "medium" | "high" | "auto" {
 
 /** 16:9 YouTube-friendly default */
 export function getImageSize(): string {
-  // Prefer YouTube-native 16:9. Note: 1536x1024 is 3:2, not 16:9.
   return process.env.CONTACTBOX_IMAGE_SIZE || "1280x720";
 }
 

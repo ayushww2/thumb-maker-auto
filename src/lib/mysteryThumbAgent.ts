@@ -3,7 +3,7 @@ import path from "path";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import {
-  createContactBoxClient,
+  createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
 } from "@/lib/contactbox";
@@ -468,10 +468,7 @@ export async function pickFormatReference(
 async function extractLayoutBlueprint(
   reference: CompetitorRef,
 ): Promise<string> {
-  const client = createContactBoxClient();
-  const model = getReasoningModel();
-  const completion = await client.chat.completions.create({
-    model,
+  const completion = await createReasoningCompletion({
     temperature: 0.1,
     max_tokens: 700,
     messages: [
@@ -509,12 +506,8 @@ async function scanOneThumb(input: {
   videoDbId: string;
   tier: "viral" | "low";
 }): Promise<ThumbScanLesson | null> {
-  const client = createContactBoxClient();
-  const model = getReasoningModel();
-
   try {
-    const completion = await client.chat.completions.create({
-      model,
+    const completion = await createReasoningCompletion({
       temperature: 0.2,
       max_tokens: 700,
       messages: [
@@ -571,6 +564,7 @@ Return STRICT JSON only:
       thumbnailUrl: input.thumbnailUrl,
     };
 
+    const storedModel = getReasoningModel();
     await prisma.thumbScan.upsert({
       where: { videoId: input.videoDbId },
       create: {
@@ -584,7 +578,7 @@ Return STRICT JSON only:
         formatLabel: lesson.formatLabel,
         whyItWorks: lesson.whyItWorks,
         rawNotes: content,
-        model,
+        model: storedModel,
       },
       update: {
         tier: input.tier,
@@ -596,7 +590,7 @@ Return STRICT JSON only:
         formatLabel: lesson.formatLabel,
         whyItWorks: lesson.whyItWorks,
         rawNotes: content,
-        model,
+        model: storedModel,
       },
     });
 
@@ -678,9 +672,6 @@ export async function buildMysteryPlaybook(force = false): Promise<MysteryPlaybo
     scanTrainingThumbs(),
   ]);
 
-  const client = createContactBoxClient();
-  const model = getReasoningModel();
-
   const viralLines = viral
     .map(
       (v, i) =>
@@ -708,8 +699,7 @@ lesson=${l.whyItWorks}`,
     )
     .join("\n\n");
 
-  const completion = await client.chat.completions.create({
-    model,
+  const completion = await createReasoningCompletion({
     temperature: 0.35,
     messages: [
       {
@@ -782,8 +772,6 @@ Build the Mystery Thumb Agent playbook JSON now.`,
 
 async function describeCompetitorThumbs(comps: CompetitorRef[]): Promise<string> {
   try {
-    const client = createContactBoxClient();
-    const model = getReasoningModel();
     const content: Array<
       | { type: "text"; text: string }
       | { type: "image_url"; image_url: { url: string } }
@@ -806,8 +794,7 @@ Then note shared formats across the set. Be concrete.`,
       });
     }
 
-    const completion = await client.chat.completions.create({
-      model,
+    const completion = await createReasoningCompletion({
       temperature: 0.3,
       max_tokens: 900,
       messages: [{ role: "user", content: content as never }],
@@ -863,11 +850,7 @@ export async function runMysteryThumbAgent(input: {
   );
   const forcedAnchor = uniqueAnchorPersona(title);
 
-  const client = createContactBoxClient();
-  const model = getReasoningModel();
-
-  const completion = await client.chat.completions.create({
-    model,
+  const completion = await createReasoningCompletion({
     temperature: 0.55,
     messages: [
       {
@@ -957,17 +940,18 @@ Produce the JSON edit brief now.`,
 
   // Hard-enforce layout-only copy + unique face + 16:9
   const imagePrompt = [
-    "Using the uploaded image ONLY as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
-    "Match composition grammar only (zones, text placement, red arrow/circle style). Do NOT keep the reference person's face.",
-    `COMPLETELY REPLACE the reaction/anchor person with this UNIQUE persona: ${forcedAnchor}.`,
-    "Different hair, age, ethnicity, wardrobe, and facial structure from the reference. No blonde female anchor unless that exact persona was forced.",
+    `CRITICAL: Completely erase the reference person and put this NEW unique reaction face in that zone instead: ${forcedAnchor}.`,
+    "Keep only the LAYOUT from the uploaded image (zones, banner bar, red arrow/circle style, split composition).",
+    "Do NOT keep the reference face, hair, age, ethnicity, or clothes. No default blonde female news anchor unless that exact persona was forced above.",
+    `Sell ONLY this title: ${title}`,
     "Output must be 16:9 widescreen (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
       ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
       : "",
+    `Reaction face must be: ${forcedAnchor}`,
     parsed.discoveryPlan
-      ? `Discovery-side content to depict: ${parsed.discoveryPlan.trim()}`
+      ? `Discovery-side content for THIS title only: ${parsed.discoveryPlan.trim()}`
       : "",
     "Do not reproduce copyrighted photos, real news-network logos, or identifiable celebrity faces from the reference.",
   ]
