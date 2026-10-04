@@ -18,8 +18,13 @@ export function getOpenAIBaseUrl(): string {
 }
 
 export function getReasoningModel(): string {
-  // ContactBox recommended Codex/reasoning model
-  return process.env.CONTACTBOX_REASONING_MODEL || "gpt-5.6-terra";
+  return process.env.CONTACTBOX_REASONING_MODEL || "gpt-6.1-sol";
+}
+
+/** Use SSE streaming for ContactBox/OpenAI chat completions (aggregated server-side). */
+export function getReasoningStreaming(): boolean {
+  const raw = (process.env.CONTACTBOX_STREAMING || "true").toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "off";
 }
 
 export function getImageModel(): string {
@@ -44,8 +49,9 @@ export function getReasoningModelFallbacks(): string[] {
     ...new Set([
       primary,
       ...extra,
-      "gpt-5.6-terra",
+      "gpt-6.1-sol",
       "gpt-5.6-sol",
+      "gpt-5.6-terra",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",

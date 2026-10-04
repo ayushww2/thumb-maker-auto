@@ -38,6 +38,7 @@ export async function GET() {
       imageModel: contactbox.imageModel,
       imageQuality: contactbox.imageQuality,
       imageSize: contactbox.imageSize,
+      reasoningStreaming: contactbox.reasoningStreaming,
       apiOk: probe.ok,
       activeProvider: probe.provider,
       activeReasoningModel: probe.reasoningModel || null,

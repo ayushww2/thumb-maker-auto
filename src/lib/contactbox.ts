@@ -12,6 +12,7 @@ import {
   getOpenAIReasoningModel,
   getReasoningModel,
   getReasoningModelFallbacks,
+  getReasoningStreaming,
 } from "@/lib/env";
 
 export type ApiProbeResult = {
@@ -64,7 +65,48 @@ export function getContactBoxStatus() {
     imageSize: getImageSize(),
     openaiReasoningModel: getOpenAIReasoningModel(),
     openaiImageModel: getOpenAIImageModel(),
+    reasoningStreaming: getReasoningStreaming(),
   };
+}
+
+async function completionFromStream(
+  stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+  model: string,
+): Promise<OpenAI.Chat.ChatCompletion> {
+  let content = "";
+  for await (const chunk of stream) {
+    content += chunk.choices[0]?.delta?.content ?? "";
+  }
+  return {
+    id: `stream-${Date.now()}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content, refusal: null },
+        finish_reason: "stop",
+        logprobs: null,
+      },
+    ],
+  } as OpenAI.Chat.ChatCompletion;
+}
+
+async function createChatCompletion(
+  client: OpenAI,
+  params: Omit<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming, "model"> & {
+    model: string;
+  },
+): Promise<OpenAI.Chat.ChatCompletion> {
+  if (getReasoningStreaming()) {
+    const stream = await client.chat.completions.create({
+      ...params,
+      stream: true,
+    });
+    return completionFromStream(stream, params.model);
+  }
+  return client.chat.completions.create(params);
 }
 
 export function createContactBoxClient() {
@@ -190,7 +232,7 @@ async function chatCompletionsWithFallback(
     const client = createContactBoxClient();
     for (const model of models) {
       try {
-        return await client.chat.completions.create({ ...rest, model });
+        return await createChatCompletion(client, { ...rest, model });
       } catch (err) {
         const msg = getErrorMessage(err);
         errors.push(`${model}: ${msg}`);
@@ -203,7 +245,7 @@ async function chatCompletionsWithFallback(
     const client = createOpenAIClient();
     const model = getOpenAIReasoningModel();
     try {
-      return await client.chat.completions.create({ ...rest, model });
+      return await createChatCompletion(client, { ...rest, model });
     } catch (err) {
       errors.push(`${model}: ${getErrorMessage(err)}`);
     }
