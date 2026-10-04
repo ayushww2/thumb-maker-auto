@@ -10,6 +10,10 @@ import {
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
 import { scoreCompetitor } from "@/lib/textSimilarity";
+import {
+  THUMB_QUALITY_SYSTEM_RULES,
+  THUMB_RENDER_QUALITY,
+} from "@/lib/thumbRenderQuality";
 
 export const CLAY_NICHE = "clay-mysteries";
 export const CLAY_MIN_VIEWS = 100_000;
@@ -472,7 +476,7 @@ export async function runClayThumbAgent(input: {
   );
 
   const completion = await createReasoningCompletion({
-    temperature: 0.5,
+    temperature: 0.62,
     messages: [
       {
         role: "system",
@@ -480,15 +484,17 @@ export async function runClayThumbAgent(input: {
 Train/generate ONLY from Clay Mysteries competitor titles + thumbs (≥100K).
 Copy LAYOUT from the format reference; invent new clay-niche discovery content for the new title.
 
+${THUMB_QUALITY_SYSTEM_RULES}
+
 Return STRICT JSON only:
 {
   "analysis": "why this clay format fits",
   "chosenFormat": "short format name",
-  "overlayText": "3-6 word ALL-CAPS punch line",
-  "discoveryPlan": "photoreal clay/ancient discovery visual for THIS title",
-  "imagePrompt": "edit instruction: use uploaded image as layout template only; replace subjects/text for new title; keep 16:9; thick markers if present",
+  "overlayText": "3-6 word ALL-CAPS punch line (keep the strong thick punch-text style)",
+  "discoveryPlan": "photoreal, unique, lightly-lit clay/ancient discovery visual specific to THIS title — name concrete materials/lighting",
+  "imagePrompt": "edit instruction: use uploaded image as layout template only; replace subjects/text for new title; keep 16:9; thick markers if present; photoreal + lighter objects + sharp text",
   "whyTheseComps": "why this clay format reference"
-}`,
+}`
       },
       {
         role: "user",
@@ -539,16 +545,17 @@ Produce JSON now.`,
 
   const imagePrompt = [
     "Using the uploaded Clay Mysteries thumbnail ONLY as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
-    "Match composition grammar from the clay competitor set only.",
+    "Match composition grammar from the clay competitor set only — but invent unique title-specific subjects/props (do not clone the reference artifact).",
     `Sell ONLY this title: ${title}`,
     "Output must be 16:9 (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
-      ? `Banner text exactly: ${parsed.overlayText.trim()}`
+      ? `Banner text exactly (keep it thick, ultra-sharp, high-contrast): ${parsed.overlayText.trim()}`
       : "",
     parsed.discoveryPlan
-      ? `Discovery content: ${parsed.discoveryPlan.trim()}`
+      ? `Discovery content (unique + photoreal + lightly lit): ${parsed.discoveryPlan.trim()}`
       : "",
+    THUMB_RENDER_QUALITY,
   ]
     .filter(Boolean)
     .join(" ");
@@ -558,9 +565,15 @@ Produce JSON now.`,
     `Title: ${title}`,
     parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
     "Base style ONLY on Clay Mysteries viral packages (ancient tablets, sealed knowledge, AI/biblical reveals).",
-    parsed.overlayText ? `Banner: ${parsed.overlayText}` : "",
-    parsed.discoveryPlan ? `Discovery: ${parsed.discoveryPlan}` : "",
+    "Invent unique title-specific discovery details — distinct materials, markings, and lighting so it does not feel generic.",
+    parsed.overlayText
+      ? `Banner (thick sharp ALL-CAPS punch text): ${parsed.overlayText}`
+      : "",
+    parsed.discoveryPlan
+      ? `Discovery (lighter objects, clean highlights): ${parsed.discoveryPlan}`
+      : "",
     `Layout blueprint: ${layoutBlueprint}`,
+    THUMB_RENDER_QUALITY,
     "No watermarks, no channel logos, no YouTube UI.",
   ]
     .filter(Boolean)
