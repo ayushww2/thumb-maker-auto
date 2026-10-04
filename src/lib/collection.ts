@@ -15,12 +15,14 @@ export type SeedVideo = {
   thumbnailUrl: string;
   thumbnailUrlHq: string;
   videoUrl: string;
+  niche?: string | null;
 };
 
 export type SeedPayload = {
   minViews: number;
   videoCount: number;
   videos: SeedVideo[];
+  niche?: string | null;
   channelsMeta?: Record<
     string,
     { channelId?: string; channelName?: string; channelUrl?: string }
@@ -83,6 +85,7 @@ export async function upsertCollection(payload: SeedPayload) {
     channelsUpserted += 1;
 
     for (const video of ch.videos) {
+      const niche = video.niche || payload.niche || null;
       await prisma.video.upsert({
         where: { youtubeId: video.videoId },
         create: {
@@ -94,6 +97,7 @@ export async function upsertCollection(payload: SeedPayload) {
           videoUrl: video.videoUrl,
           durationSeconds: video.durationSeconds ?? null,
           uploadDate: video.uploadDate ?? null,
+          niche,
           channelId: channel.id,
         },
         update: {
@@ -104,6 +108,7 @@ export async function upsertCollection(payload: SeedPayload) {
           videoUrl: video.videoUrl,
           durationSeconds: video.durationSeconds ?? null,
           uploadDate: video.uploadDate ?? null,
+          niche,
           channelId: channel.id,
         },
       });

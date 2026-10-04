@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { generateThumbnailImage } from "@/lib/contactbox";
+import { generateWithClayAgent } from "@/lib/clayThumbAgent";
 import { generateWithMysteryAgent } from "@/lib/mysteryThumbAgent";
 import { getR2Config } from "@/lib/env";
 import { uploadThumbnail } from "@/lib/r2";
@@ -38,7 +39,10 @@ export async function processJob(jobId: string): Promise<void> {
       where: { id: jobId },
       data: {
         status: "running",
-        progress: "Mystery Thumb Agent starting…",
+        progress:
+          job.agentType === "clay"
+            ? "Clay Thumb Agent starting…"
+            : "Mystery Thumb Agent starting…",
         startedAt: job.startedAt ?? new Date(),
         error: null,
       },
@@ -57,7 +61,31 @@ export async function processJob(jobId: string): Promise<void> {
       let formatRefUrl: string | null = null;
       let image: Buffer;
 
-      if (job.useAgent) {
+      if (job.useAgent && job.agentType === "clay") {
+        await setProgress(
+          jobId,
+          "Clay Agent · scanning ≥100K clay titles/thumbs only…",
+        );
+        const result = await generateWithClayAgent({
+          title: job.title,
+          notes: job.notes || undefined,
+        });
+        await setProgress(
+          jobId,
+          `Clay render 16:9 · format — ${result.brief.formatReference.title.slice(0, 42)}…`,
+        );
+        prompt = result.brief.generatePrompt || result.brief.imagePrompt;
+        analysis = result.brief.analysis;
+        chosenFormat = result.brief.chosenFormat;
+        overlayText = result.brief.overlayText;
+        whyTheseComps = result.brief.whyTheseComps;
+        playbookSummary = result.brief.playbook.summary;
+        competitorsJson = result.brief.competitors;
+        formatRefYoutubeId = result.brief.formatReference.youtubeId;
+        formatRefTitle = result.brief.formatReference.title;
+        formatRefUrl = result.brief.formatReference.thumbnailUrl;
+        image = result.image;
+      } else if (job.useAgent) {
         await setProgress(
           jobId,
           "Scanning DB for 1 layout format + unique reaction face…",
@@ -90,7 +118,6 @@ export async function processJob(jobId: string): Promise<void> {
         image = result.image;
       } else {
         await setProgress(jobId, "Rendering gpt-image-2 16:9…");
-        // Fallback shouldn't normally happen for queued agent jobs
         image = await generateThumbnailImage(
           `Cinematic 16:9 mystery YouTube thumbnail for: ${job.title}`,
         );
