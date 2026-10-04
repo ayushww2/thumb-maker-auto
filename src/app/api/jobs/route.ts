@@ -57,19 +57,25 @@ export async function POST(req: Request) {
       title?: string;
       notes?: string;
       useAgent?: boolean;
+      agentType?: "mystery" | "clay";
     };
     const title = body.title?.trim();
     if (!title) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
 
+    const agentType = body.agentType === "clay" ? "clay" : "mystery";
     const job = await prisma.job.create({
       data: {
         title,
         notes: body.notes?.trim() || null,
         useAgent: body.useAgent !== false,
+        agentType,
         status: "queued",
-        progress: "Queued — waiting for Mystery Thumb Agent…",
+        progress:
+          agentType === "clay"
+            ? "Queued — waiting for Clay Thumb Agent…"
+            : "Queued — waiting for Mystery Thumb Agent…",
       },
     });
 

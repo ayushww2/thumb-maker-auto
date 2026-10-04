@@ -31,6 +31,7 @@ model Video {
   videoUrl        String
   durationSeconds Int?
   uploadDate      String?
+  niche           String?
   channelId       String
   channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   thumbScan       ThumbScan?
@@ -41,6 +42,7 @@ model Video {
   @@index([title])
   @@index([channelId, viewCount])
   @@index([r2ThumbnailUrl])
+  @@index([niche, viewCount])
 }
 
 /// Mystery Thumb Agent visual + title lesson for one competitor video
@@ -95,6 +97,7 @@ model Job {
   progress        String    @default("Queued")
   error           String?
   useAgent        Boolean   @default(true)
+  agentType       String    @default("mystery") // mystery | clay
   prompt          String?
   analysis        String?
   chosenFormat    String?

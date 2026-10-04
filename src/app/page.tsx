@@ -8,6 +8,7 @@ export default function Home() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
+  const [agentType, setAgentType] = useState<"mystery" | "clay">("clay");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queuedId, setQueuedId] = useState<string | null>(null);
@@ -21,14 +22,13 @@ export default function Home() {
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, notes, useAgent: true }),
+        body: JSON.stringify({ title, notes, useAgent: true, agentType }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to queue job");
       setQueuedId(data.job.id);
       setTitle("");
       setNotes("");
-      // Jump to past jobs so user can watch progress in background
       router.push(`/jobs?selected=${data.job.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to queue job");
@@ -57,18 +57,19 @@ export default function Home() {
             R2 Library
           </Link>
           <Link href="/agent" className="text-[var(--muted)] hover:text-[var(--ink)]">
-            Mystery Agent
+            Agents
           </Link>
         </div>
         <p className="font-[family-name:var(--font-display)] text-5xl font-extrabold tracking-tight text-[var(--ink)] sm:text-7xl">
           Mlin Auto Thumb
         </p>
         <p className="anim-rise-delay mt-3 text-sm font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-          Mystery Thumb Agent
+          {agentType === "clay" ? "Clay Thumb Agent" : "Mystery Thumb Agent"}
         </p>
         <p className="anim-rise-delay mt-4 max-w-2xl text-base text-[var(--muted)] sm:text-lg">
-          Submit a title — the job keeps running in the background. Watch it under
-          Past Jobs while the agent matches comps and renders the still.
+          {agentType === "clay"
+            ? "Clay thumbnails are trained only on Clay Mysteries competitor titles + thumbs (≥100K views)."
+            : "Submit a title — the job keeps running in the background while comps are matched and rendered."}
         </p>
       </header>
 
@@ -76,6 +77,36 @@ export default function Home() {
         onSubmit={onSubmit}
         className="anim-rise-delay-2 relative z-10 mt-12 grid gap-5 border-t border-[var(--line)] pt-10"
       >
+        <fieldset className="grid gap-2">
+          <legend className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            Agent
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setAgentType("clay")}
+              className={`border px-4 py-2 text-sm font-semibold ${
+                agentType === "clay"
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]"
+                  : "border-[var(--line)] text-[var(--muted)]"
+              }`}
+            >
+              Clay Thumbnails
+            </button>
+            <button
+              type="button"
+              onClick={() => setAgentType("mystery")}
+              className={`border px-4 py-2 text-sm font-semibold ${
+                agentType === "mystery"
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]"
+                  : "border-[var(--line)] text-[var(--muted)]"
+              }`}
+            >
+              Mystery Thumbnails
+            </button>
+          </div>
+        </fieldset>
+
         <label className="grid gap-2">
           <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
             Video title
@@ -84,7 +115,11 @@ export default function Home() {
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Scientists Opened a Sealed Chamber in the Amazon — What They Found…"
+            placeholder={
+              agentType === "clay"
+                ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground…"
+                : "Scientists Opened a Sealed Chamber in the Amazon — What They Found…"
+            }
             className="w-full border border-[var(--line)] bg-black/25 px-4 py-3 text-lg text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />
         </label>
@@ -97,7 +132,11 @@ export default function Home() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="News-realism: shocked anchor left, discovery right, thick red arrow + circle, bold banner text…"
+            placeholder={
+              agentType === "clay"
+                ? "Copy clay viral layout: ancient tablet / sealed text + punch banner + red marker…"
+                : "News-realism: shocked face, discovery right, thick red arrow + circle…"
+            }
             className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 text-base text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />
         </label>
