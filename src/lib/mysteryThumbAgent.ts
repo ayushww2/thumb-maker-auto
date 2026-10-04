@@ -10,6 +10,10 @@ import {
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
 import { scoreCompetitor } from "@/lib/textSimilarity";
+import {
+  THUMB_QUALITY_SYSTEM_RULES,
+  THUMB_RENDER_QUALITY,
+} from "@/lib/thumbRenderQuality";
 
 export type CompetitorRef = {
   youtubeId: string;
@@ -851,7 +855,7 @@ export async function runMysteryThumbAgent(input: {
   const forcedAnchor = uniqueAnchorPersona(title);
 
   const completion = await createReasoningCompletion({
-    temperature: 0.55,
+    temperature: 0.62,
     messages: [
       {
         role: "system",
@@ -865,14 +869,16 @@ CRITICAL UNIQUENESS RULES:
 - The reaction face MUST match the forced unique persona exactly
 - Discovery side must be unique to THIS title
 
+${THUMB_QUALITY_SYSTEM_RULES}
+
 Return STRICT JSON only:
 {
   "analysis": "why this format fits + how the unique persona + discovery sell the click",
   "chosenFormat": "short name of the copied format",
-  "overlayText": "3-6 word ALL-CAPS punch line for the banner (required)",
+  "overlayText": "3-6 word ALL-CAPS punch line for the banner (required — keep thick sharp punch-text style)",
   "anchorPlan": "1 sentence restating the forced unique reaction-face persona (must match forced persona)",
-  "discoveryPlan": "concrete photoreal discovery-side content for THIS title (what object/scene/clue/lighting)",
-  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must say: use uploaded image only as layout template; completely replace the person with the forced unique persona; replace discovery side; set banner text; keep thick red arrow/circle style; 16:9 1280x720.",
+  "discoveryPlan": "concrete photoreal discovery-side content for THIS title (specific object/materials/lighting — lighter midtones)",
+  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must say: use uploaded image only as layout template; completely replace the person with the forced unique persona; replace discovery side; set banner text; keep thick red arrow/circle style; photoreal + lighter objects + ultra-sharp text; 16:9 1280x720.",
   "whyTheseComps": "1 sentence on why this format reference was chosen"
 }
 Rules:
@@ -880,7 +886,7 @@ Rules:
 - Orientation MUST stay 16:9 widescreen
 - Discovery content must be photoreal and specific to the new title
 - Keep thick red arrow/circle energy if the reference has callouts
-- Banner text required`,
+- Banner text required and must stay sharp/high-contrast`,
       },
       {
         role: "user",
@@ -947,13 +953,14 @@ Produce the JSON edit brief now.`,
     "Output must be 16:9 widescreen (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
-      ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
+      ? `Banner / punch text must read exactly (thick, ultra-sharp, high-contrast): ${parsed.overlayText.trim()}`
       : "",
     `Reaction face must be: ${forcedAnchor}`,
     parsed.discoveryPlan
-      ? `Discovery-side content for THIS title only: ${parsed.discoveryPlan.trim()}`
+      ? `Discovery-side content for THIS title only (unique + photoreal + lighter objects/clean highlights): ${parsed.discoveryPlan.trim()}`
       : "",
     "Do not reproduce copyrighted photos, real news-network logos, or identifiable celebrity faces from the reference.",
+    THUMB_RENDER_QUALITY,
   ]
     .filter(Boolean)
     .join(" ");
@@ -967,8 +974,9 @@ Produce the JSON edit brief now.`,
     "Composition: unique shocked reaction face on one side, discovery scene matching ONLY this title on the other, bold banner text, thick red arrow + red circle on the clue.",
     "Do NOT use a generic blonde female news anchor unless that is the forced persona.",
     "Do NOT invent unrelated stories (horses, deserts, other celebrities) that are not in this title.",
+    "Push unique title-specific discovery details; lighten props/objects with clean highlights; keep documentary realism.",
     parsed.overlayText
-      ? `Banner text: ${parsed.overlayText.trim()}`
+      ? `Banner text (thick sharp ALL-CAPS): ${parsed.overlayText.trim()}`
       : "Banner text: short ALL-CAPS punch line",
     parsed.discoveryPlan
       ? `Discovery scene for THIS title only: ${parsed.discoveryPlan.trim()}`
@@ -976,6 +984,7 @@ Produce the JSON edit brief now.`,
     layoutBlueprint
       ? `Layout blueprint to emulate (zones/graphics only — not faces/subjects): ${layoutBlueprint}`
       : "",
+    THUMB_RENDER_QUALITY,
     "No watermarks, no channel logos, no YouTube UI.",
   ]
     .filter(Boolean)
