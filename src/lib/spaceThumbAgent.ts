@@ -11,6 +11,7 @@ import {
 } from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
+import { isExcludedSpaceYoutubeId } from "@/lib/spaceExclusions";
 import { scoreCompetitor } from "@/lib/textSimilarity";
 import {
   THUMB_QUALITY_SYSTEM_RULES,
@@ -92,11 +93,12 @@ function extractJson<T>(text: string): T {
 }
 
 async function loadSpaceVideos() {
-  return prisma.video.findMany({
+  const videos = await prisma.video.findMany({
     where: { niche: SPACE_NICHE, viewCount: { gte: SPACE_MIN_VIEWS } },
     include: { channel: true, thumbScan: true },
     orderBy: { viewCount: "desc" },
   });
+  return videos.filter((v) => !isExcludedSpaceYoutubeId(v.youtubeId));
 }
 
 async function loadCachedSpacePlaybook(): Promise<SpacePlaybook | null> {
