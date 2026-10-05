@@ -475,16 +475,13 @@ async function extractLayoutBlueprint(
 ): Promise<string> {
   const visionUrl = await resolveVisionImageUrl(reference.thumbnailUrl);
   try {
-    const completion = await createReasoningCompletion({
-      temperature: 0.1,
-      max_tokens: 700,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
+    const contentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
 Extract a precise LAYOUT BLUEPRINT to copy (positions/zones/graphics only).
 IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing of the person; only WHERE the reaction-face zone sits.
 - aspect (must be 16:9)
@@ -494,9 +491,18 @@ IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing
 - where red arrow + circle sit and how thick they look
 - color blocks used for realism (blue banner, red accents, etc.)
 Return a tight bullet blueprint, no intro.`,
-            },
-            { type: "image_url", image_url: { url: visionUrl } },
-          ] as never,
+      },
+    ];
+    if (visionUrl) {
+      contentParts.push({ type: "image_url", image_url: { url: visionUrl } });
+    }
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: contentParts as never,
         },
       ],
     });
@@ -526,16 +532,13 @@ async function scanOneThumb(input: {
 }): Promise<ThumbScanLesson | null> {
   try {
     const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
-    const completion = await createReasoningCompletion({
-      temperature: 0.2,
-      max_tokens: 700,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `You are Mystery Thumb Agent studying a competitor YouTube thumbnail.
+    const scanContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `You are Mystery Thumb Agent studying a competitor YouTube thumbnail.
 Title: ${input.title}
 Views: ${input.viewCount}
 Tier: ${input.tier}
@@ -550,9 +553,18 @@ Return STRICT JSON only:
   "formatLabel": "short format name e.g. face+threat / sealed-chamber / AI-reveal",
   "whyItWorks": "1-2 sentences on why this package works or fails for views"
 }`,
-            },
-            { type: "image_url", image_url: { url: visionUrl } },
-          ] as never,
+      },
+    ];
+    if (visionUrl) {
+      scanContent.push({ type: "image_url", image_url: { url: visionUrl } });
+    }
+    const completion = await createReasoningCompletion({
+      temperature: 0.2,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: scanContent as never,
         },
       ],
     });
@@ -808,10 +820,12 @@ Then note shared formats across the set. Be concrete.`,
         text: `\n#${i + 1} ${c.viewCount.toLocaleString()} views — ${c.title}`,
       });
       const visionUrl = await resolveVisionImageUrl(c.thumbnailUrl);
-      content.push({
-        type: "image_url",
-        image_url: { url: visionUrl },
-      });
+      if (visionUrl) {
+        content.push({
+          type: "image_url",
+          image_url: { url: visionUrl },
+        });
+      }
     }
 
     const completion = await createReasoningCompletion({
@@ -871,6 +885,42 @@ export async function runMysteryThumbAgent(input: {
   );
   const forcedAnchor = uniqueAnchorPersona(title);
 
+  const userContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [
+    {
+      type: "text",
+      text: `NEW TITLE: ${title}
+${input.notes?.trim() ? `EXTRA DIRECTION: ${input.notes.trim()}` : ""}
+
+FORCED UNIQUE REACTION FACE (MANDATORY — do not change):
+${forcedAnchor}
+
+FORMAT REFERENCE (COPY LAYOUT ONLY — REPLACE THE PERSON):
+${reference.title}
+views=${reference.viewCount} format=${reference.formatLabel || "n/a"}
+url=${reference.thumbnailUrl}
+
+LAYOUT BLUEPRINT EXTRACTED FROM REFERENCE:
+${layoutBlueprint}
+
+PLAYBOOK LEARNING (what to show for viral clickbait realism):
+SUMMARY: ${playbook.summary}
+VIRAL PATTERNS:
+${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
+DO:
+${playbook.doList.map((p) => `- ${p}`).join("\n")}
+DON'T:
+${playbook.dontList.map((p) => `- ${p}`).join("\n")}
+
+Produce the JSON edit brief now.`,
+    },
+  ];
+  if (visionUrl) {
+    userContent.push({ type: "image_url", image_url: { url: visionUrl } });
+  }
+
   const completion = await createReasoningCompletion({
     temperature: 0.62,
     messages: [
@@ -907,39 +957,7 @@ Rules:
       },
       {
         role: "user",
-        content: [
-          {
-            type: "text",
-            text: `NEW TITLE: ${title}
-${input.notes?.trim() ? `EXTRA DIRECTION: ${input.notes.trim()}` : ""}
-
-FORCED UNIQUE REACTION FACE (MANDATORY — do not change):
-${forcedAnchor}
-
-FORMAT REFERENCE (COPY LAYOUT ONLY — REPLACE THE PERSON):
-${reference.title}
-views=${reference.viewCount} format=${reference.formatLabel || "n/a"}
-url=${reference.thumbnailUrl}
-
-LAYOUT BLUEPRINT EXTRACTED FROM REFERENCE:
-${layoutBlueprint}
-
-PLAYBOOK LEARNING (what to show for viral clickbait realism):
-SUMMARY: ${playbook.summary}
-VIRAL PATTERNS:
-${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
-DO:
-${playbook.doList.map((p) => `- ${p}`).join("\n")}
-DON'T:
-${playbook.dontList.map((p) => `- ${p}`).join("\n")}
-
-Produce the JSON edit brief now.`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: visionUrl },
-          },
-        ] as never,
+        content: userContent as never,
       },
     ],
   });

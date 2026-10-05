@@ -375,20 +375,32 @@ export async function resolveImageDataUrl(
 }
 
 /**
- * Best-effort vision URL: prefer data URL so ContactBox never 404s on remote thumbs.
- * Falls back to the original URL if every download candidate fails.
+ * Best-effort vision URL as a data URL so ContactBox never fetches remote thumbs.
+ * Returns null when every download candidate fails — callers must omit image_url.
  */
 export async function resolveVisionImageUrl(
   referenceImageUrl: string,
-): Promise<string> {
+): Promise<string | null> {
   try {
     return await resolveImageDataUrl(referenceImageUrl);
   } catch (err) {
     console.warn(
-      "[contactbox] vision data-url resolve failed; using remote url",
+      "[contactbox] vision data-url resolve failed; omitting image",
       getErrorMessage(err),
     );
-    return referenceImageUrl;
+    return null;
+  }
+}
+
+/** True when we can locally fetch usable thumb bytes for edits/vision. */
+export async function canFetchReferenceImage(
+  referenceImageUrl: string,
+): Promise<boolean> {
+  try {
+    await downloadReferenceBytes(referenceImageUrl);
+    return true;
+  } catch {
+    return false;
   }
 }
 

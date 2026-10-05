@@ -206,16 +206,13 @@ async function scanClayThumb(input: {
   videoDbId: string;
 }) {
   const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
-  const completion = await createReasoningCompletion({
-    temperature: 0.2,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `You are Clay Thumbnail Agent studying a Clay Mysteries competitor YouTube thumbnail.
+  const scanContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [
+    {
+      type: "text",
+      text: `You are Clay Thumbnail Agent studying a Clay Mysteries competitor YouTube thumbnail.
 ONLY describe what is visible. This niche is ancient tablets / Enoch / Sumerian / biblical AI reveals / sealed chambers.
 
 Title: ${input.title}
@@ -231,9 +228,18 @@ Return STRICT JSON only:
   "formatLabel": "short format name",
   "whyItWorks": "why this clay/mystery clickbait package works"
 }`,
-          },
-          { type: "image_url", image_url: { url: visionUrl } },
-        ] as never,
+    },
+  ];
+  if (visionUrl) {
+    scanContent.push({ type: "image_url", image_url: { url: visionUrl } });
+  }
+  const completion = await createReasoningCompletion({
+    temperature: 0.2,
+    max_tokens: 700,
+    messages: [
+      {
+        role: "user",
+        content: scanContent as never,
       },
     ],
   });
@@ -437,25 +443,31 @@ export async function pickClayFormatReference(title: string) {
 async function extractLayoutBlueprint(thumbnailUrl: string) {
   const visionUrl = await resolveVisionImageUrl(thumbnailUrl);
   try {
-    const completion = await createReasoningCompletion({
-      temperature: 0.1,
-      max_tokens: 700,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `This is a Clay Mysteries FORMAT REFERENCE thumbnail.
+    const contentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `This is a Clay Mysteries FORMAT REFERENCE thumbnail.
 Extract LAYOUT BLUEPRINT only (zones/graphics). Ignore face identity.
 - 16:9 zones with %
 - where tablet/artifact/AI subject sits
 - text / banner placement
 - red arrow/circle if present
 Return tight bullets, no intro.`,
-            },
-            { type: "image_url", image_url: { url: visionUrl } },
-          ] as never,
+      },
+    ];
+    if (visionUrl) {
+      contentParts.push({ type: "image_url", image_url: { url: visionUrl } });
+    }
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: contentParts as never,
         },
       ],
     });
@@ -491,6 +503,40 @@ export async function runClayThumbAgent(input: {
     picked.reference.thumbnailUrl,
   );
 
+  const userContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [
+    {
+      type: "text",
+      text: `NEW TITLE: ${title}
+${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
+
+CLAY FORMAT REFERENCE (layout only):
+${picked.reference.title} | ${picked.reference.viewCount} views
+${picked.reference.thumbnailUrl}
+
+LAYOUT BLUEPRINT:
+${layoutBlueprint}
+
+CLAY PLAYBOOK (from clay titles/thumbs only):
+${playbook.summary}
+VIRAL:
+${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
+FORMATS:
+${playbook.thumbnailFormats.map((p) => `- ${p}`).join("\n")}
+DO:
+${playbook.doList.map((p) => `- ${p}`).join("\n")}
+DON'T:
+${playbook.dontList.map((p) => `- ${p}`).join("\n")}
+
+Produce JSON now.`,
+    },
+  ];
+  if (visionUrl) {
+    userContent.push({ type: "image_url", image_url: { url: visionUrl } });
+  }
+
   const completion = await createReasoningCompletion({
     temperature: 0.62,
     messages: [
@@ -514,37 +560,7 @@ Return STRICT JSON only:
       },
       {
         role: "user",
-        content: [
-          {
-            type: "text",
-            text: `NEW TITLE: ${title}
-${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
-
-CLAY FORMAT REFERENCE (layout only):
-${picked.reference.title} | ${picked.reference.viewCount} views
-${picked.reference.thumbnailUrl}
-
-LAYOUT BLUEPRINT:
-${layoutBlueprint}
-
-CLAY PLAYBOOK (from clay titles/thumbs only):
-${playbook.summary}
-VIRAL:
-${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
-FORMATS:
-${playbook.thumbnailFormats.map((p) => `- ${p}`).join("\n")}
-DO:
-${playbook.doList.map((p) => `- ${p}`).join("\n")}
-DON'T:
-${playbook.dontList.map((p) => `- ${p}`).join("\n")}
-
-Produce JSON now.`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: visionUrl },
-          },
-        ] as never,
+        content: userContent as never,
       },
     ],
   });

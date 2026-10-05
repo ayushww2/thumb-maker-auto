@@ -3,6 +3,7 @@ import path from "path";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import {
+  canFetchReferenceImage,
   createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
@@ -206,16 +207,13 @@ async function scanSpaceThumb(input: {
   videoDbId: string;
 }) {
   const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
-  const completion = await createReasoningCompletion({
-    temperature: 0.2,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `You are Space Thumb Agent studying a Space competitor YouTube thumbnail.
+  const scanContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [
+    {
+      type: "text",
+      text: `You are Space Thumb Agent studying a Space competitor YouTube thumbnail.
 ONLY describe what is visible. This niche is planets / NASA finds / JWST / spacecraft / cosmic anomalies (≥100K Space comps).
 
 Title: ${input.title}
@@ -231,9 +229,18 @@ Return STRICT JSON only:
   "formatLabel": "short format name",
   "whyItWorks": "why this space/mystery clickbait package works"
 }`,
-          },
-          { type: "image_url", image_url: { url: visionUrl } },
-        ] as never,
+    },
+  ];
+  if (visionUrl) {
+    scanContent.push({ type: "image_url", image_url: { url: visionUrl } });
+  }
+  const completion = await createReasoningCompletion({
+    temperature: 0.2,
+    max_tokens: 700,
+    messages: [
+      {
+        role: "user",
+        content: scanContent as never,
       },
     ],
   });
@@ -411,7 +418,10 @@ export async function pickSpaceFormatReference(title: string) {
   if (!videos.length) {
     throw new Error("No Space format references in DB");
   }
-  const scored = videos.map((v) => {
+  // Prefer comps with R2 thumbs (YouTube-only URLs often 404 / expire).
+  const withThumbs = videos.filter((v) => Boolean(v.r2ThumbnailUrl));
+  const pool = withThumbs.length ? withThumbs : videos;
+  const scored = pool.map((v) => {
     const score = scoreCompetitor({
       query: title,
       title: v.title,
@@ -425,11 +435,27 @@ export async function pickSpaceFormatReference(title: string) {
       videoUrl: v.videoUrl,
       channelName: v.channel.name,
       score,
-      fitness: score * 0.45 + Math.min(0.55, Math.log10(v.viewCount + 1) / 12),
+      fitness:
+        score * 0.45 +
+        Math.min(0.55, Math.log10(v.viewCount + 1) / 12) +
+        (v.r2ThumbnailUrl ? 0.15 : 0),
     };
   });
   scored.sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount);
-  const reference = { ...scored[0], isFormatReference: true };
+
+  // Verify the top refs are downloadable; skip deleted/404 thumbs.
+  let reference = { ...scored[0], isFormatReference: true };
+  for (const candidate of scored.slice(0, 12)) {
+    if (await canFetchReferenceImage(candidate.thumbnailUrl)) {
+      reference = { ...candidate, isFormatReference: true };
+      break;
+    }
+    console.warn(
+      "[space-agent] skipping undownloadable format ref",
+      candidate.youtubeId,
+    );
+  }
+
   const shortlist = scored.slice(0, 5).map(({ fitness: _f, ...rest }) => rest);
   return { reference, shortlist, candidates: scored.slice(0, 8) };
 }
@@ -437,16 +463,13 @@ export async function pickSpaceFormatReference(title: string) {
 async function extractLayoutBlueprint(thumbnailUrl: string) {
   const visionUrl = await resolveVisionImageUrl(thumbnailUrl);
   try {
-    const completion = await createReasoningCompletion({
-      temperature: 0.1,
-      max_tokens: 900,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
+    const contentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
 Extract a COMP-FAITHFUL BLUEPRINT for cloning the package (not the exact subject).
 Include:
 - 16:9 zones with %
@@ -456,9 +479,34 @@ Include:
 - border/frame if present
 - red arrow/circle/markers if present
 Return tight bullets, no intro.`,
-            },
-            { type: "image_url", image_url: { url: visionUrl } },
-          ] as never,
+      },
+    ];
+    if (visionUrl) {
+      contentParts.push({ type: "image_url", image_url: { url: visionUrl } });
+    } else {
+      contentParts[0] = {
+        type: "text",
+        text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
+Extract a COMP-FAITHFUL BLUEPRINT for cloning the package (not the exact subject).
+Include:
+- 16:9 zones with %
+- where planet/spacecraft/terrain/anomaly sits
+- EXACT text placement (top strip / lower third / left stack / corner brand)
+- TEXT STYLE: color (white/yellow/etc), stroke/shadow, weight, casing, word count feel
+- border/frame if present
+- red arrow/circle/markers if present
+Return tight bullets, no intro.
+
+(Image unavailable — return a generic Space package blueprint from known ≥100K comps.)`,
+      };
+    }
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 900,
+      messages: [
+        {
+          role: "user",
+          content: contentParts as never,
         },
       ],
     });
@@ -540,6 +588,45 @@ export async function runSpaceThumbAgent(input: {
   };
 
   async function requestBrief() {
+    const userContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `NEW TITLE: ${title}
+${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
+
+SPACE FORMAT REFERENCE (COPY PACKAGE HEAVILY — layout + text style):
+${picked.reference.title} | ${picked.reference.viewCount} views
+${picked.reference.thumbnailUrl}
+
+COMP BLUEPRINT (layout + text style):
+${layoutBlueprint}
+
+SPACE PLAYBOOK:
+${playbookBrief.summary}
+VIRAL:
+${playbookBrief.viral.map((p) => `- ${p}`).join("\n")}
+FORMATS:
+${playbookBrief.formats.map((p) => `- ${p}`).join("\n")}
+DO:
+${playbookBrief.doList.map((p) => `- ${p}`).join("\n")}
+DON'T:
+${playbookBrief.dontList.map((p) => `- ${p}`).join("\n")}
+
+Top space-comp text examples: NOTHING · THIS IS JUPITER · THIS IS PLUTO · WHAT RUSSIA SAW · NASA'S PLAN · WHAT CHINA SAW · THIS ISN'T GOOD · INSIDE STARSHIP
+
+Produce JSON now.`,
+      },
+    ];
+    if (visionUrl) {
+      userContent.push({
+        type: "image_url",
+        image_url: { url: visionUrl },
+      });
+    }
+
     return createReasoningCompletion({
       temperature: 0.4,
       max_tokens: 1400,
@@ -571,39 +658,7 @@ Return STRICT JSON only (no markdown):
         },
         {
           role: "user",
-          content: [
-            {
-              type: "text",
-              text: `NEW TITLE: ${title}
-${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
-
-SPACE FORMAT REFERENCE (COPY PACKAGE HEAVILY — layout + text style):
-${picked.reference.title} | ${picked.reference.viewCount} views
-${picked.reference.thumbnailUrl}
-
-COMP BLUEPRINT (layout + text style):
-${layoutBlueprint}
-
-SPACE PLAYBOOK:
-${playbookBrief.summary}
-VIRAL:
-${playbookBrief.viral.map((p) => `- ${p}`).join("\n")}
-FORMATS:
-${playbookBrief.formats.map((p) => `- ${p}`).join("\n")}
-DO:
-${playbookBrief.doList.map((p) => `- ${p}`).join("\n")}
-DON'T:
-${playbookBrief.dontList.map((p) => `- ${p}`).join("\n")}
-
-Top space-comp text examples: NOTHING · THIS IS JUPITER · THIS IS PLUTO · WHAT RUSSIA SAW · NASA'S PLAN · WHAT CHINA SAW · THIS ISN'T GOOD · INSIDE STARSHIP
-
-Produce JSON now.`,
-            },
-            {
-              type: "image_url",
-              image_url: { url: visionUrl },
-            },
-          ] as never,
+          content: userContent as never,
         },
       ],
     });
