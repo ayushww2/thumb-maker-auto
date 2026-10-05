@@ -71,9 +71,8 @@ export function getImageModelFallbacks(): string[] {
   ];
 }
 
+/** Always render gpt-image-2 at the highest ContactBox quality tier. */
 export function getImageQuality(): "low" | "medium" | "high" | "auto" {
-  const q = (process.env.CONTACTBOX_IMAGE_QUALITY || "high").toLowerCase();
-  if (q === "low" || q === "medium" || q === "high" || q === "auto") return q;
   return "high";
 }
 
