@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildClayPlaybook } from "@/lib/clayThumbAgent";
 import { buildMysteryPlaybook } from "@/lib/mysteryThumbAgent";
+import { buildSpacePlaybook } from "@/lib/spaceThumbAgent";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -8,6 +9,10 @@ export const maxDuration = 300;
 export async function GET(req: NextRequest) {
   try {
     const agent = req.nextUrl.searchParams.get("agent") || "mystery";
+    if (agent === "space") {
+      const playbook = await buildSpacePlaybook(false);
+      return NextResponse.json({ ok: true, playbook });
+    }
     if (agent === "clay") {
       const playbook = await buildClayPlaybook(false);
       return NextResponse.json({ ok: true, playbook });
@@ -34,6 +39,10 @@ export async function POST(req: Request) {
       agent?: string;
     };
     const force = body.force !== false;
+    if (body.agent === "space") {
+      const playbook = await buildSpacePlaybook(force);
+      return NextResponse.json({ ok: true, playbook });
+    }
     if (body.agent === "clay") {
       const playbook = await buildClayPlaybook(force);
       return NextResponse.json({ ok: true, playbook });

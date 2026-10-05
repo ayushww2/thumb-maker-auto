@@ -157,7 +157,7 @@ export async function probeContactBoxApi(): Promise<ApiProbeResult> {
       const reasoningModel =
         reasoningCandidates[0] || preferred;
 
-      await client.chat.completions.create({
+      await createChatCompletion(client, {
         model: reasoningModel,
         messages: [{ role: "user", content: "Reply with exactly: ok" }],
         max_tokens: 8,
@@ -354,10 +354,12 @@ export async function craftThumbnailPrompt(input: {
 Return ONLY the prompt text, no quotes or markdown.
 Rules:
 - 16:9 cinematic composition, bold subject, readable negative space for a title overlay
-- Photoreal or high-polish stylized — never generic AI mush
+- Photoreal documentary realism — real materials, natural lighting, camera depth; never generic AI mush or plastic CGI
+- Keep on-image text thick, ultra-sharp, high-contrast ALL-CAPS when used (text treatment must stay excellent)
+- Unique title-specific props/details — not recycled generic objects
+- Lighten objects/subjects: lifted midtones, clean highlights; avoid crushed muddy blacks
 - No watermarks, no UI chrome, no logos unless asked
-- Keep text-in-image minimal; prefer faces/objects over paragraphs of text
-- High contrast, punchy lighting, clear focal point`,
+- High contrast, punchy-but-natural lighting, clear focal point`,
       },
       {
         role: "user",
