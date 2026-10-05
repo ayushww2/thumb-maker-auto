@@ -9,7 +9,7 @@ async function main() {
   const payload = JSON.parse(raw) as SeedPayload & { niche?: string };
   payload.niche = payload.niche || "space";
   payload.videos = payload.videos.filter(
-    (v) => !isExcludedSpaceYoutubeId(v.youtubeId || v.videoId || ""),
+    (v) => !isExcludedSpaceYoutubeId(v.videoId || ""),
   );
   for (const v of payload.videos) {
     v.niche = "space";
