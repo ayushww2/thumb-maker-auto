@@ -93,20 +93,72 @@ async function completionFromStream(
   } as OpenAI.Chat.ChatCompletion;
 }
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+const CHAT_TIMEOUT_MS = 90_000;
+const IMAGE_TIMEOUT_MS = 180_000;
+
 async function createChatCompletion(
   client: OpenAI,
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming, "model"> & {
     model: string;
   },
 ): Promise<OpenAI.Chat.ChatCompletion> {
+  // Always prefer streaming for prompts; fall back to non-stream if empty/fail/timeout.
   if (getReasoningStreaming()) {
-    const stream = await client.chat.completions.create({
-      ...params,
-      stream: true,
-    });
-    return completionFromStream(stream, params.model);
+    try {
+      const stream = await withTimeout(
+        client.chat.completions.create({
+          ...params,
+          stream: true,
+        }),
+        CHAT_TIMEOUT_MS,
+        `chat stream ${params.model}`,
+      );
+      const completion = await withTimeout(
+        completionFromStream(stream, params.model),
+        CHAT_TIMEOUT_MS,
+        `chat stream read ${params.model}`,
+      );
+      const text = completion.choices[0]?.message?.content?.trim() || "";
+      if (text) return completion;
+      console.warn(
+        "[contactbox] stream returned empty content; retrying non-stream",
+        params.model,
+      );
+    } catch (err) {
+      console.warn(
+        "[contactbox] stream failed; retrying non-stream",
+        params.model,
+        getErrorMessage(err),
+      );
+    }
   }
-  return client.chat.completions.create(params);
+  return withTimeout(
+    client.chat.completions.create(params),
+    CHAT_TIMEOUT_MS,
+    `chat ${params.model}`,
+  );
 }
 
 export function createContactBoxClient() {
@@ -117,6 +169,8 @@ export function createContactBoxClient() {
   return new OpenAI({
     apiKey,
     baseURL: getContactBoxBaseUrl(),
+    timeout: IMAGE_TIMEOUT_MS,
+    maxRetries: 1,
   });
 }
 
@@ -128,6 +182,8 @@ export function createOpenAIClient() {
   return new OpenAI({
     apiKey,
     baseURL: getOpenAIBaseUrl(),
+    timeout: IMAGE_TIMEOUT_MS,
+    maxRetries: 1,
   });
 }
 
@@ -157,7 +213,7 @@ export async function probeContactBoxApi(): Promise<ApiProbeResult> {
       const reasoningModel =
         reasoningCandidates[0] || preferred;
 
-      await client.chat.completions.create({
+      await createChatCompletion(client, {
         model: reasoningModel,
         messages: [{ role: "user", content: "Reply with exactly: ok" }],
         max_tokens: 8,
@@ -285,6 +341,201 @@ async function bufferFromImageResponse(item: {
   throw new Error("Image response had neither b64_json nor url");
 }
 
+function isSoftImageEditError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    isModelAvailabilityError(err) ||
+    /failed to download file/i.test(msg) ||
+    /error while downloading file/i.test(msg) ||
+    /error getting file type/i.test(msg) ||
+    /upstream status code:\s*404/i.test(msg) ||
+    /invalid_image/i.test(msg) ||
+    /unsupported image/i.test(msg) ||
+    /404/.test(msg) ||
+    /timed? ?out/i.test(msg) ||
+    /ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg)
+  );
+}
+
+async function downloadReferenceBytes(
+  referenceImageUrl: string,
+): Promise<{ bytes: Buffer; contentType: string; ext: string }> {
+  const youtubeIdMatch = referenceImageUrl.match(/\/(?:vi|thumbs)\/([A-Za-z0-9_-]{11})\b/);
+  const youtubeId = youtubeIdMatch?.[1];
+  const candidates = [
+    referenceImageUrl,
+    youtubeId
+      ? `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/space/thumbs/${youtubeId}.jpg`
+      : "",
+    youtubeId
+      ? `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/clay/thumbs/${youtubeId}.jpg`
+      : "",
+    youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg` : "",
+    youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/sddefault.jpg` : "",
+    youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "",
+  ].filter(Boolean);
+
+  const errors: string[] = [];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "mlin-auto-thumb" },
+      });
+      if (!res.ok) {
+        errors.push(`${url} -> ${res.status}`);
+        continue;
+      }
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.byteLength < 2500) {
+        errors.push(`${url} -> too small (${bytes.byteLength})`);
+        continue;
+      }
+      const contentType = res.headers.get("content-type") || "image/jpeg";
+      const ext = contentType.includes("png") ? "png" : "jpg";
+      return { bytes, contentType, ext };
+    } catch (err) {
+      errors.push(`${url} -> ${getErrorMessage(err)}`);
+    }
+  }
+  throw new Error(
+    `Failed to download format reference (${errors.slice(0, 3).join(" | ")})`,
+  );
+}
+
+/** Download a thumb and return a data URL ContactBox vision can read without upstream fetch. */
+export async function resolveImageDataUrl(
+  referenceImageUrl: string,
+): Promise<string> {
+  const { bytes, contentType } = await downloadReferenceBytes(referenceImageUrl);
+  const mime = contentType.includes("png")
+    ? "image/png"
+    : contentType.includes("webp")
+      ? "image/webp"
+      : "image/jpeg";
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+
+/**
+ * Best-effort vision URL as a data URL so ContactBox never fetches remote thumbs.
+ * Returns null when every download candidate fails — callers must omit image_url.
+ */
+export async function resolveVisionImageUrl(
+  referenceImageUrl: string,
+): Promise<string | null> {
+  try {
+    return await resolveImageDataUrl(referenceImageUrl);
+  } catch (err) {
+    console.warn(
+      "[contactbox] vision data-url resolve failed; omitting image",
+      getErrorMessage(err),
+    );
+    return null;
+  }
+}
+
+/** True when we can locally fetch usable thumb bytes for edits/vision. */
+export async function canFetchReferenceImage(
+  referenceImageUrl: string,
+): Promise<boolean> {
+  try {
+    await downloadReferenceBytes(referenceImageUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function extractB64FromUnknown(event: unknown): string | null {
+  if (!event || typeof event !== "object") return null;
+  const e = event as Record<string, unknown>;
+  if (typeof e.b64_json === "string" && e.b64_json) return e.b64_json;
+  if (typeof e.partial_image_b64 === "string" && e.partial_image_b64) {
+    return e.partial_image_b64;
+  }
+  const data = e.data;
+  if (Array.isArray(data) && data[0] && typeof data[0] === "object") {
+    const first = data[0] as Record<string, unknown>;
+    if (typeof first.b64_json === "string" && first.b64_json) {
+      return first.b64_json;
+    }
+    if (
+      typeof first.partial_image_b64 === "string" &&
+      first.partial_image_b64
+    ) {
+      return first.partial_image_b64;
+    }
+  }
+  return null;
+}
+
+async function bufferFromImageStream(
+  stream: AsyncIterable<unknown>,
+): Promise<Buffer> {
+  let lastB64: string | null = null;
+  for await (const event of stream) {
+    const e = event as Record<string, unknown>;
+    const type = String(e.type || "");
+    const b64 = extractB64FromUnknown(event);
+    if (b64) lastB64 = b64;
+    if (
+      type.includes("completed") ||
+      type === "image_generation.completed" ||
+      type === "image_edit.completed" ||
+      (e as { status?: string }).status === "completed"
+    ) {
+      break;
+    }
+  }
+  if (!lastB64) {
+    throw new Error("Image stream completed without image data");
+  }
+  return Buffer.from(lastB64, "base64");
+}
+
+/** Parse SSE / NDJSON image stream body from ContactBox edits/generate. */
+async function bufferFromSseResponse(res: Response): Promise<Buffer> {
+  const body = await res.text();
+  let lastB64: string | null = null;
+  for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === "data: [DONE]") continue;
+    const payload = trimmed.startsWith("data:")
+      ? trimmed.slice(5).trim()
+      : trimmed;
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(payload) as unknown;
+      const b64 = extractB64FromUnknown(parsed);
+      if (b64) lastB64 = b64;
+      // Also handle nested response wrappers
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { data?: unknown[] }).data)
+      ) {
+        const nested = extractB64FromUnknown(parsed);
+        if (nested) lastB64 = nested;
+      }
+    } catch {
+      // ignore non-JSON keepalives
+    }
+  }
+  if (!lastB64) {
+    // Some gateways return a final JSON object instead of SSE
+    try {
+      const json = JSON.parse(body) as {
+        data?: Array<{ b64_json?: string; url?: string }>;
+      };
+      const item = json.data?.[0];
+      if (item) return bufferFromImageResponse(item);
+    } catch {
+      // fall through
+    }
+    throw new Error("Image SSE completed without image data");
+  }
+  return Buffer.from(lastB64, "base64");
+}
+
 async function generateImageWithFallback(prompt: string): Promise<Buffer> {
   const quality = getImageQuality();
   const size = getImageSize();
@@ -293,21 +544,56 @@ async function generateImageWithFallback(prompt: string): Promise<Buffer> {
   if (getContactBoxApiKey()) {
     const client = createContactBoxClient();
     for (const model of getImageModelFallbacks()) {
+      // Prefer streaming high-quality generation (user requested streaming for thumbs).
       try {
-        const result = await client.images.generate({
-          model,
-          prompt,
-          n: 1,
-          size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
-          quality,
-        });
+        const stream = (await withTimeout(
+          client.images.generate({
+            model,
+            prompt,
+            n: 1,
+            size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
+            quality,
+            stream: true,
+            partial_images: 1,
+          } as OpenAI.Images.ImageGenerateParams & {
+            stream: true;
+            partial_images: number;
+          }),
+          IMAGE_TIMEOUT_MS,
+          `${model} image stream start`,
+        )) as unknown as AsyncIterable<unknown>;
+        return await withTimeout(
+          bufferFromImageStream(stream),
+          IMAGE_TIMEOUT_MS,
+          `${model} image stream read`,
+        );
+      } catch (err) {
+        const msg = getErrorMessage(err);
+        errors.push(`${model}/stream: ${msg}`);
+        // Fall through to non-stream for this model
+      }
+
+      try {
+        const result = await withTimeout(
+          client.images.generate({
+            model,
+            prompt,
+            n: 1,
+            size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
+            quality,
+          }),
+          IMAGE_TIMEOUT_MS,
+          `${model} image generate`,
+        );
         const item = result.data?.[0];
         if (!item) throw new Error("Image generation returned no data");
         return bufferFromImageResponse(item);
       } catch (err) {
         const msg = getErrorMessage(err);
         errors.push(`${model}: ${msg}`);
-        if (!isModelAvailabilityError(err)) throw new Error(humanizeApiError(msg));
+        if (!isModelAvailabilityError(err) && !isSoftImageEditError(err)) {
+          // continue trying other models for soft failures
+        }
       }
     }
   }
@@ -316,13 +602,17 @@ async function generateImageWithFallback(prompt: string): Promise<Buffer> {
     const client = createOpenAIClient();
     const model = getOpenAIImageModel();
     try {
-      const result = await client.images.generate({
-        model,
-        prompt,
-        n: 1,
-        size: model === "dall-e-3" ? "1792x1024" : "1024x1024",
-        quality: quality === "high" ? "hd" : "standard",
-      });
+      const result = await withTimeout(
+        client.images.generate({
+          model,
+          prompt,
+          n: 1,
+          size: model === "dall-e-3" ? "1792x1024" : "1024x1024",
+          quality: quality === "high" ? "hd" : "standard",
+        }),
+        IMAGE_TIMEOUT_MS,
+        `${model} openai generate`,
+      );
       const item = result.data?.[0];
       if (!item) throw new Error("OpenAI image generation returned no data");
       return bufferFromImageResponse(item);
@@ -354,10 +644,12 @@ export async function craftThumbnailPrompt(input: {
 Return ONLY the prompt text, no quotes or markdown.
 Rules:
 - 16:9 cinematic composition, bold subject, readable negative space for a title overlay
-- Photoreal or high-polish stylized — never generic AI mush
+- Photoreal documentary realism — real materials, natural lighting, camera depth; never generic AI mush or plastic CGI
+- Keep on-image text thick, ultra-sharp, high-contrast ALL-CAPS when used (text treatment must stay excellent)
+- Unique title-specific props/details — not recycled generic objects
+- Lighten objects/subjects: lifted midtones, clean highlights; avoid crushed muddy blacks
 - No watermarks, no UI chrome, no logos unless asked
-- Keep text-in-image minimal; prefer faces/objects over paragraphs of text
-- High contrast, punchy lighting, clear focal point`,
+- High contrast, punchy-but-natural lighting, clear focal point`,
       },
       {
         role: "user",
@@ -384,43 +676,114 @@ export async function generateThumbnailImage(prompt: string): Promise<Buffer> {
 /**
  * Copy LAYOUT from a real competitor thumbnail (format reference),
  * regenerate content for the new title at forced 16:9.
+ * Soft-fails edit/download issues into high-quality streaming generate.
  */
 export async function generateThumbnailFromReference(input: {
   prompt: string;
   referenceImageUrl: string;
 }): Promise<Buffer> {
-  const refRes = await fetch(input.referenceImageUrl, {
-    headers: { "User-Agent": "mlin-auto-thumb" },
-  });
-  if (!refRes.ok) {
-    throw new Error(`Failed to download format reference: ${refRes.status}`);
-  }
-  const refBytes = Buffer.from(await refRes.arrayBuffer());
-  const contentType = refRes.headers.get("content-type") || "image/jpeg";
-  const ext = contentType.includes("png") ? "png" : "jpg";
   const errors: string[] = [];
+  let ref:
+    | { bytes: Buffer; contentType: string; ext: string }
+    | null = null;
 
-  if (getContactBoxApiKey()) {
+  try {
+    ref = await downloadReferenceBytes(input.referenceImageUrl);
+  } catch (err) {
+    const msg = getErrorMessage(err);
+    errors.push(`ref-download: ${msg}`);
+    console.warn(
+      "[contactbox] format-ref download failed; using streaming generate",
+      msg,
+    );
+  }
+
+  if (ref && getContactBoxApiKey()) {
+    const { bytes: refBytes, contentType, ext } = ref;
     for (const model of getImageModelFallbacks()) {
+      // Prefer streaming edits (partial images) for speed + reliability.
       try {
         const form = new FormData();
         form.append("model", model);
         form.append("prompt", input.prompt);
-        form.append("size", "1280x720");
+        form.append("size", getImageSize());
         form.append("quality", getImageQuality());
+        form.append("stream", "true");
+        form.append("partial_images", "1");
         form.append(
           "image",
-          new File([new Uint8Array(refBytes)], `format-ref.${ext}`, {
-            type: contentType,
-          }),
+          new Blob([new Uint8Array(refBytes)], { type: contentType }),
+          `format-ref.${ext}`,
         );
 
         const base = getContactBoxBaseUrl().replace(/\/$/, "");
-        const res = await fetch(`${base}/images/edits`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
-          body: form,
-        });
+        const res = await withTimeout(
+          fetch(`${base}/images/edits`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
+            body: form,
+            signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+          }),
+          IMAGE_TIMEOUT_MS + 5_000,
+          `${model} edits stream`,
+        );
+        const contentTypeHeader = res.headers.get("content-type") || "";
+        if (!res.ok) {
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          throw new Error(
+            json.error?.message || `images/edits stream failed: ${res.status}`,
+          );
+        }
+        if (
+          contentTypeHeader.includes("text/event-stream") ||
+          contentTypeHeader.includes("ndjson") ||
+          contentTypeHeader.includes("octet-stream")
+        ) {
+          return await withTimeout(
+            bufferFromSseResponse(res),
+            IMAGE_TIMEOUT_MS,
+            `${model} edits stream read`,
+          );
+        }
+        // Gateway may still return JSON even when stream=true was requested.
+        const json = (await res.json()) as {
+          error?: { message?: string };
+          data?: Array<{ b64_json?: string; url?: string }>;
+        };
+        const item = json.data?.[0];
+        if (!item) throw new Error("images/edits stream returned no data");
+        return bufferFromImageResponse(item);
+      } catch (err) {
+        const msg = getErrorMessage(err);
+        errors.push(`${model}/edit-stream: ${msg}`);
+        console.warn("[contactbox] edits stream failed; trying non-stream", msg);
+      }
+
+      try {
+        const form = new FormData();
+        form.append("model", model);
+        form.append("prompt", input.prompt);
+        form.append("size", getImageSize());
+        form.append("quality", getImageQuality());
+        form.append(
+          "image",
+          new Blob([new Uint8Array(refBytes)], { type: contentType }),
+          `format-ref.${ext}`,
+        );
+
+        const base = getContactBoxBaseUrl().replace(/\/$/, "");
+        const res = await withTimeout(
+          fetch(`${base}/images/edits`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
+            body: form,
+            signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+          }),
+          IMAGE_TIMEOUT_MS + 5_000,
+          `${model} edits`,
+        );
         const json = (await res.json()) as {
           error?: { message?: string };
           data?: Array<{ b64_json?: string; url?: string }>;
@@ -435,13 +798,16 @@ export async function generateThumbnailFromReference(input: {
         return bufferFromImageResponse(item);
       } catch (err) {
         const msg = getErrorMessage(err);
-        errors.push(`${model}: ${msg}`);
-        if (!isModelAvailabilityError(err)) throw new Error(humanizeApiError(msg));
+        errors.push(`${model}/edit: ${msg}`);
+        // Soft-fail edits (404 file type, download errors, etc.) and keep trying.
+        if (!isSoftImageEditError(err) && !isModelAvailabilityError(err)) {
+          console.warn("[contactbox] edits hard error, will try generate", msg);
+        }
       }
     }
   }
 
-  // OpenAI edits fallback, or plain generate if edits unavailable
+  // Always fall through to high-quality streaming generate rather than failing the job.
   try {
     return await generateImageWithFallback(input.prompt);
   } catch (err) {

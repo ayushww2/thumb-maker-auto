@@ -6,10 +6,15 @@ import {
   createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
+  resolveVisionImageUrl,
 } from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
 import { scoreCompetitor } from "@/lib/textSimilarity";
+import {
+  THUMB_QUALITY_SYSTEM_RULES,
+  THUMB_RENDER_QUALITY,
+} from "@/lib/thumbRenderQuality";
 
 export type CompetitorRef = {
   youtubeId: string;
@@ -468,16 +473,15 @@ export async function pickFormatReference(
 async function extractLayoutBlueprint(
   reference: CompetitorRef,
 ): Promise<string> {
-  const completion = await createReasoningCompletion({
-    temperature: 0.1,
-    max_tokens: 700,
-    messages: [
+  const visionUrl = await resolveVisionImageUrl(reference.thumbnailUrl);
+  try {
+    const contentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
       {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
+        type: "text",
+        text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
 Extract a precise LAYOUT BLUEPRINT to copy (positions/zones/graphics only).
 IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing of the person; only WHERE the reaction-face zone sits.
 - aspect (must be 16:9)
@@ -487,15 +491,35 @@ IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing
 - where red arrow + circle sit and how thick they look
 - color blocks used for realism (blue banner, red accents, etc.)
 Return a tight bullet blueprint, no intro.`,
-          },
-          { type: "image_url", image_url: { url: reference.thumbnailUrl } },
-        ] as never,
       },
-    ],
-  });
-  const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Failed to extract layout blueprint from format reference");
-  return text;
+    ];
+    if (visionUrl) {
+      contentParts.push({ type: "image_url", image_url: { url: visionUrl } });
+    }
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: contentParts as never,
+        },
+      ],
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch (err) {
+    console.warn(
+      "[mystery-agent] layout blueprint vision failed; using text fallback",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return [
+    "16:9 mystery package",
+    "Reaction-face zone on one side (~40%), discovery scene on the other",
+    "Bold ALL-CAPS banner/punch text with high contrast",
+    "Thick red arrow + red circle on the clue",
+  ].join("\n");
 }
 
 async function scanOneThumb(input: {
@@ -507,16 +531,14 @@ async function scanOneThumb(input: {
   tier: "viral" | "low";
 }): Promise<ThumbScanLesson | null> {
   try {
-    const completion = await createReasoningCompletion({
-      temperature: 0.2,
-      max_tokens: 700,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `You are Mystery Thumb Agent studying a competitor YouTube thumbnail.
+    const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
+    const scanContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: `You are Mystery Thumb Agent studying a competitor YouTube thumbnail.
 Title: ${input.title}
 Views: ${input.viewCount}
 Tier: ${input.tier}
@@ -531,9 +553,18 @@ Return STRICT JSON only:
   "formatLabel": "short format name e.g. face+threat / sealed-chamber / AI-reveal",
   "whyItWorks": "1-2 sentences on why this package works or fails for views"
 }`,
-            },
-            { type: "image_url", image_url: { url: input.thumbnailUrl } },
-          ] as never,
+      },
+    ];
+    if (visionUrl) {
+      scanContent.push({ type: "image_url", image_url: { url: visionUrl } });
+    }
+    const completion = await createReasoningCompletion({
+      temperature: 0.2,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: scanContent as never,
         },
       ],
     });
@@ -788,10 +819,13 @@ Then note shared formats across the set. Be concrete.`,
         type: "text",
         text: `\n#${i + 1} ${c.viewCount.toLocaleString()} views — ${c.title}`,
       });
-      content.push({
-        type: "image_url",
-        image_url: { url: c.thumbnailUrl },
-      });
+      const visionUrl = await resolveVisionImageUrl(c.thumbnailUrl);
+      if (visionUrl) {
+        content.push({
+          type: "image_url",
+          image_url: { url: visionUrl },
+        });
+      }
     }
 
     const completion = await createReasoningCompletion({
@@ -844,50 +878,20 @@ export async function runMysteryThumbAgent(input: {
   ]);
 
   const { reference, shortlist } = picked;
+  const visionUrl = await resolveVisionImageUrl(reference.thumbnailUrl);
   const layoutBlueprint = await extractLayoutBlueprint(reference);
   const competitors = shortlist.map((c) =>
     c.youtubeId === reference.youtubeId ? { ...c, isFormatReference: true } : c,
   );
   const forcedAnchor = uniqueAnchorPersona(title);
 
-  const completion = await createReasoningCompletion({
-    temperature: 0.55,
-    messages: [
-      {
-        role: "system",
-        content: `You are Mystery Thumb Agent.
-You will EDIT a real competitor thumbnail used ONLY as a FORMAT / LAYOUT REFERENCE.
-Goal: keep that reference's 16:9 LAYOUT (zones, banner, arrow/circle placement) but REPLACE every person and every discovery subject with UNIQUE content for this title.
-
-CRITICAL UNIQUENESS RULES:
-- NEVER keep the reference person's face, hair, age, ethnicity, or clothes
-- NEVER default to a blonde female news anchor unless the forced persona is that
-- The reaction face MUST match the forced unique persona exactly
-- Discovery side must be unique to THIS title
-
-Return STRICT JSON only:
-{
-  "analysis": "why this format fits + how the unique persona + discovery sell the click",
-  "chosenFormat": "short name of the copied format",
-  "overlayText": "3-6 word ALL-CAPS punch line for the banner (required)",
-  "anchorPlan": "1 sentence restating the forced unique reaction-face persona (must match forced persona)",
-  "discoveryPlan": "concrete photoreal discovery-side content for THIS title (what object/scene/clue/lighting)",
-  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must say: use uploaded image only as layout template; completely replace the person with the forced unique persona; replace discovery side; set banner text; keep thick red arrow/circle style; 16:9 1280x720.",
-  "whyTheseComps": "1 sentence on why this format reference was chosen"
-}
-Rules:
-- COPY FORMAT / LAYOUT only — never copy faces or discovery subjects from the reference
-- Orientation MUST stay 16:9 widescreen
-- Discovery content must be photoreal and specific to the new title
-- Keep thick red arrow/circle energy if the reference has callouts
-- Banner text required`,
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `NEW TITLE: ${title}
+  const userContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [
+    {
+      type: "text",
+      text: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA DIRECTION: ${input.notes.trim()}` : ""}
 
 FORCED UNIQUE REACTION FACE (MANDATORY — do not change):
@@ -911,12 +915,49 @@ DON'T:
 ${playbook.dontList.map((p) => `- ${p}`).join("\n")}
 
 Produce the JSON edit brief now.`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: reference.thumbnailUrl },
-          },
-        ] as never,
+    },
+  ];
+  if (visionUrl) {
+    userContent.push({ type: "image_url", image_url: { url: visionUrl } });
+  }
+
+  const completion = await createReasoningCompletion({
+    temperature: 0.62,
+    messages: [
+      {
+        role: "system",
+        content: `You are Mystery Thumb Agent.
+You will EDIT a real competitor thumbnail used ONLY as a FORMAT / LAYOUT REFERENCE.
+Goal: keep that reference's 16:9 LAYOUT (zones, banner, arrow/circle placement) but REPLACE every person and every discovery subject with UNIQUE content for this title.
+
+CRITICAL UNIQUENESS RULES:
+- NEVER keep the reference person's face, hair, age, ethnicity, or clothes
+- NEVER default to a blonde female news anchor unless the forced persona is that
+- The reaction face MUST match the forced unique persona exactly
+- Discovery side must be unique to THIS title
+
+${THUMB_QUALITY_SYSTEM_RULES}
+
+Return STRICT JSON only:
+{
+  "analysis": "why this format fits + how the unique persona + discovery sell the click",
+  "chosenFormat": "short name of the copied format",
+  "overlayText": "3-6 word ALL-CAPS punch line for the banner (required — keep thick sharp punch-text style)",
+  "anchorPlan": "1 sentence restating the forced unique reaction-face persona (must match forced persona)",
+  "discoveryPlan": "concrete photoreal discovery-side content for THIS title (specific object/materials/lighting — lighter midtones)",
+  "imagePrompt": "EDIT INSTRUCTION for gpt-image-2 images/edits. Must say: use uploaded image only as layout template; completely replace the person with the forced unique persona; replace discovery side; set banner text; keep thick red arrow/circle style; photoreal + lighter objects + ultra-sharp text; 16:9 1280x720.",
+  "whyTheseComps": "1 sentence on why this format reference was chosen"
+}
+Rules:
+- COPY FORMAT / LAYOUT only — never copy faces or discovery subjects from the reference
+- Orientation MUST stay 16:9 widescreen
+- Discovery content must be photoreal and specific to the new title
+- Keep thick red arrow/circle energy if the reference has callouts
+- Banner text required and must stay sharp/high-contrast`,
+      },
+      {
+        role: "user",
+        content: userContent as never,
       },
     ],
   });
@@ -947,13 +988,14 @@ Produce the JSON edit brief now.`,
     "Output must be 16:9 widescreen (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
-      ? `Banner / punch text must read exactly: ${parsed.overlayText.trim()}`
+      ? `Banner / punch text must read exactly (thick, ultra-sharp, high-contrast): ${parsed.overlayText.trim()}`
       : "",
     `Reaction face must be: ${forcedAnchor}`,
     parsed.discoveryPlan
-      ? `Discovery-side content for THIS title only: ${parsed.discoveryPlan.trim()}`
+      ? `Discovery-side content for THIS title only (unique + photoreal + lighter objects/clean highlights): ${parsed.discoveryPlan.trim()}`
       : "",
     "Do not reproduce copyrighted photos, real news-network logos, or identifiable celebrity faces from the reference.",
+    THUMB_RENDER_QUALITY,
   ]
     .filter(Boolean)
     .join(" ");
@@ -967,8 +1009,9 @@ Produce the JSON edit brief now.`,
     "Composition: unique shocked reaction face on one side, discovery scene matching ONLY this title on the other, bold banner text, thick red arrow + red circle on the clue.",
     "Do NOT use a generic blonde female news anchor unless that is the forced persona.",
     "Do NOT invent unrelated stories (horses, deserts, other celebrities) that are not in this title.",
+    "Push unique title-specific discovery details; lighten props/objects with clean highlights; keep documentary realism.",
     parsed.overlayText
-      ? `Banner text: ${parsed.overlayText.trim()}`
+      ? `Banner text (thick sharp ALL-CAPS): ${parsed.overlayText.trim()}`
       : "Banner text: short ALL-CAPS punch line",
     parsed.discoveryPlan
       ? `Discovery scene for THIS title only: ${parsed.discoveryPlan.trim()}`
@@ -976,6 +1019,7 @@ Produce the JSON edit brief now.`,
     layoutBlueprint
       ? `Layout blueprint to emulate (zones/graphics only — not faces/subjects): ${layoutBlueprint}`
       : "",
+    THUMB_RENDER_QUALITY,
     "No watermarks, no channel logos, no YouTube UI.",
   ]
     .filter(Boolean)
