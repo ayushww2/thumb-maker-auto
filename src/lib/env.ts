@@ -21,10 +21,11 @@ export function getReasoningModel(): string {
   return process.env.CONTACTBOX_REASONING_MODEL || "gpt-6.1-sol";
 }
 
-/** Use SSE streaming for ContactBox/OpenAI chat completions (aggregated server-side). */
+/** Use SSE streaming for ContactBox/OpenAI chat completions (aggregated server-side).
+ * Forced ON for all prompt/reasoning calls — prompts + thumb briefs always stream.
+ */
 export function getReasoningStreaming(): boolean {
-  const raw = (process.env.CONTACTBOX_STREAMING || "true").toLowerCase();
-  return raw !== "false" && raw !== "0" && raw !== "off";
+  return true;
 }
 
 export function getImageModel(): string {
