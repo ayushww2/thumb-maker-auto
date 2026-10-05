@@ -584,14 +584,34 @@ Return STRICT JSON only:
   });
 
   const content = completion.choices[0]?.message?.content?.trim() || "";
-  const parsed = extractJson<{
+  let parsed: {
     analysis: string;
     chosenFormat: string;
     overlayText: string;
     discoveryPlan: string;
     imagePrompt: string;
     whyTheseComps: string;
-  }>(content);
+  };
+  try {
+    parsed = extractJson(content);
+  } catch {
+    const words = title
+      .replace(/[^a-zA-Z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(" ")
+      .toUpperCase();
+    parsed = {
+      analysis: "Fallback brief — preserve clay format-reference layout.",
+      chosenFormat: "Ancient tablet + punch banner",
+      overlayText: words || "LOCKED INSIDE",
+      discoveryPlan: `Photoreal clay/ancient discovery that sells: ${title}`,
+      imagePrompt:
+        "Use uploaded image as layout template only; replace subjects/text for new title; keep 16:9; thick markers if present; photoreal + lighter objects + sharp text",
+      whyTheseComps: `Closest clay format reference: ${picked.reference.title}`,
+    };
+  }
 
   const imagePrompt = [
     "Using the uploaded Clay Mysteries thumbnail ONLY as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
