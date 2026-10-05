@@ -15,11 +15,11 @@ import {
   THUMB_RENDER_QUALITY,
 } from "@/lib/thumbRenderQuality";
 
-export const CLAY_NICHE = "clay-mysteries";
-export const CLAY_MIN_VIEWS = 100_000;
-export const CLAY_AGENT_ID = "clay-thumb-agent";
+export const SPACE_NICHE = "space";
+export const SPACE_MIN_VIEWS = 100_000;
+export const SPACE_AGENT_ID = "space-thumb-agent";
 
-export type ClayCompetitor = {
+export type SpaceCompetitor = {
   youtubeId: string;
   title: string;
   viewCount: number;
@@ -30,7 +30,7 @@ export type ClayCompetitor = {
   isFormatReference?: boolean;
 };
 
-export type ClayPlaybook = {
+export type SpacePlaybook = {
   generatedAt: string;
   niche: string;
   minViews: number;
@@ -59,12 +59,12 @@ export type ClayPlaybook = {
   r2Url?: string | null;
 };
 
-export type ClayAgentResult = {
-  agent: typeof CLAY_AGENT_ID;
+export type SpaceAgentResult = {
+  agent: typeof SPACE_AGENT_ID;
   title: string;
-  playbook: ClayPlaybook;
-  competitors: ClayCompetitor[];
-  formatReference: ClayCompetitor & { layoutBlueprint: string };
+  playbook: SpacePlaybook;
+  competitors: SpaceCompetitor[];
+  formatReference: SpaceCompetitor & { layoutBlueprint: string };
   analysis: string;
   chosenFormat: string;
   overlayText: string;
@@ -74,7 +74,7 @@ export type ClayAgentResult = {
   whyTheseComps: string;
 };
 
-const PLAYBOOK_PATH = path.join(process.cwd(), "data", "clay-playbook.json");
+const PLAYBOOK_PATH = path.join(process.cwd(), "data", "space-playbook.json");
 const SCAN_LIMIT = 20;
 
 function extractJson<T>(text: string): T {
@@ -84,29 +84,29 @@ function extractJson<T>(text: string): T {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start === -1 || end === -1) {
-    throw new Error(`Clay agent returned no JSON object: ${text.slice(0, 240)}`);
+    throw new Error(`Space agent returned no JSON object: ${text.slice(0, 240)}`);
   }
   return JSON.parse(raw.slice(start, end + 1)) as T;
 }
 
-async function loadClayVideos() {
+async function loadSpaceVideos() {
   return prisma.video.findMany({
-    where: { niche: CLAY_NICHE, viewCount: { gte: CLAY_MIN_VIEWS } },
+    where: { niche: SPACE_NICHE, viewCount: { gte: SPACE_MIN_VIEWS } },
     include: { channel: true, thumbScan: true },
     orderBy: { viewCount: "desc" },
   });
 }
 
-async function loadCachedPlaybook(): Promise<ClayPlaybook | null> {
+async function loadCachedSpacePlaybook(): Promise<SpacePlaybook | null> {
   try {
     const row = await prisma.agentPlaybook.findUnique({
-      where: { id: CLAY_AGENT_ID },
+      where: { id: SPACE_AGENT_ID },
     });
     if (row?.summary) {
       return {
         generatedAt: row.generatedAt.toISOString(),
-        niche: CLAY_NICHE,
-        minViews: CLAY_MIN_VIEWS,
+        niche: SPACE_NICHE,
+        minViews: SPACE_MIN_VIEWS,
         sampleSize: row.sampleSize,
         viralThreshold: row.viralThreshold,
         scanCount: row.scanCount,
@@ -124,21 +124,21 @@ async function loadCachedPlaybook(): Promise<ClayPlaybook | null> {
     // ignore
   }
   try {
-    return JSON.parse(await readFile(PLAYBOOK_PATH, "utf8")) as ClayPlaybook;
+    return JSON.parse(await readFile(PLAYBOOK_PATH, "utf8")) as SpacePlaybook;
   } catch {
     return null;
   }
 }
 
-async function persistPlaybook(playbook: ClayPlaybook) {
+async function persistSpacePlaybook(playbook: SpacePlaybook) {
   await mkdir(path.dirname(PLAYBOOK_PATH), { recursive: true });
   await writeFile(PLAYBOOK_PATH, JSON.stringify(playbook, null, 2));
 
   await prisma.agentPlaybook.upsert({
-    where: { id: CLAY_AGENT_ID },
+    where: { id: SPACE_AGENT_ID },
     create: {
-      id: CLAY_AGENT_ID,
-      agent: CLAY_AGENT_ID,
+      id: SPACE_AGENT_ID,
+      agent: SPACE_AGENT_ID,
       summary: playbook.summary,
       viralPatterns: playbook.viralPatterns,
       lowViewPatterns: [],
@@ -147,7 +147,7 @@ async function persistPlaybook(playbook: ClayPlaybook) {
       doList: playbook.doList,
       dontList: playbook.dontList,
       viralThreshold: playbook.viralThreshold,
-      lowThreshold: CLAY_MIN_VIEWS,
+      lowThreshold: SPACE_MIN_VIEWS,
       sampleSize: playbook.sampleSize,
       viralCount: playbook.sampleSize,
       lowCount: 0,
@@ -171,7 +171,7 @@ async function persistPlaybook(playbook: ClayPlaybook) {
 
   const r2 = getR2Config();
   if (r2.configured) {
-    const key = "collection/clay/playbook.json";
+    const key = "collection/space/playbook.json";
     const client = new S3Client({
       region: "auto",
       endpoint: r2.endpoint,
@@ -190,14 +190,14 @@ async function persistPlaybook(playbook: ClayPlaybook) {
     );
     playbook.r2Url = `${r2.publicBaseUrl}/${key}`;
     await prisma.agentPlaybook.update({
-      where: { id: CLAY_AGENT_ID },
+      where: { id: SPACE_AGENT_ID },
       data: { r2Key: key, r2Url: playbook.r2Url },
     });
     await writeFile(PLAYBOOK_PATH, JSON.stringify(playbook, null, 2));
   }
 }
 
-async function scanClayThumb(input: {
+async function scanSpaceThumb(input: {
   youtubeId: string;
   title: string;
   viewCount: number;
@@ -213,7 +213,7 @@ async function scanClayThumb(input: {
         content: [
           {
             type: "text",
-            text: `You are Clay Thumbnail Agent studying a Clay Mysteries competitor YouTube thumbnail.
+            text: `You are Space Thumb Agent studying a Space competitor YouTube thumbnail.
 ONLY describe what is visible. This niche is ancient tablets / Enoch / Sumerian / biblical AI reveals / sealed chambers.
 
 Title: ${input.title}
@@ -227,7 +227,7 @@ Return STRICT JSON only:
   "overlayText": "on-image text if any",
   "emotionalHook": "why the eye stops",
   "formatLabel": "short format name",
-  "whyItWorks": "why this clay/mystery clickbait package works"
+  "whyItWorks": "why this space/mystery clickbait package works"
 }`,
           },
           { type: "image_url", image_url: { url: input.thumbnailUrl } },
@@ -290,24 +290,24 @@ Return STRICT JSON only:
   };
 }
 
-export async function buildClayPlaybook(force = false): Promise<ClayPlaybook> {
+export async function buildSpacePlaybook(force = false): Promise<SpacePlaybook> {
   if (!force) {
-    const cached = await loadCachedPlaybook();
+    const cached = await loadCachedSpacePlaybook();
     if (cached?.summary) return cached;
   }
 
-  const videos = await loadClayVideos();
+  const videos = await loadSpaceVideos();
   if (!videos.length) {
     throw new Error(
-      "No Clay Mysteries videos ≥100K found. Run seed-clay-collection first.",
+      "No Space videos ≥100K found. Run seed-space-collection first.",
     );
   }
 
   const scanTargets = videos.slice(0, SCAN_LIMIT);
-  const visualLessons: ClayPlaybook["visualLessons"] = [];
+  const visualLessons: SpacePlaybook["visualLessons"] = [];
   for (const v of scanTargets) {
     try {
-      const lesson = await scanClayThumb({
+      const lesson = await scanSpaceThumb({
         youtubeId: v.youtubeId,
         title: v.title,
         viewCount: v.viewCount,
@@ -315,10 +315,10 @@ export async function buildClayPlaybook(force = false): Promise<ClayPlaybook> {
         videoDbId: v.id,
       });
       visualLessons.push(lesson);
-      console.log("[clay-agent] scanned", v.youtubeId, v.viewCount);
+      console.log("[space-agent] scanned", v.youtubeId, v.viewCount);
     } catch (err) {
       console.warn(
-        "[clay-agent] scan failed",
+        "[space-agent] scan failed",
         v.youtubeId,
         err instanceof Error ? err.message : err,
       );
@@ -346,30 +346,30 @@ lesson=${l.whyItWorks}`,
     messages: [
       {
         role: "system",
-        content: `You are Clay Thumbnail Agent.
-You train ONLY on Clay Mysteries competitor titles + thumbnail vision scans (≥100K views).
-Niche themes: Sumerian tablets, Book of Enoch, Ethiopian Bible, sealed chambers, AI reanalysis of ancient texts, underground humans, biblical contradictions via Grok/AI.
+        content: `You are Space Thumb Agent.
+You train ONLY on Space competitor titles + thumbnail vision scans (≥100K views).
+Niche themes: NASA finds, planets (Jupiter/Pluto/Io/Venus), edge of universe, Planet 9, cosmic anomalies, telescopes, spacecraft imagery.
 Return STRICT JSON only:
 {
-  "summary": "2-4 sentences on what makes Clay Mysteries thumbs/titles win",
+  "summary": "2-4 sentences on what makes Space thumbs/titles win",
   "viralPatterns": ["..."],
   "thumbnailFormats": ["composition formats from scans"],
   "titleFormulas": ["title formulas from this niche only"],
-  "doList": ["rules for making clay thumbs"],
-  "dontList": ["what to avoid — including non-clay niches"]
+  "doList": ["rules for making space thumbs"],
+  "dontList": ["what to avoid — including non-space niches, clay/biblical content, ancient tablets"]
 }`,
       },
       {
         role: "user",
-        content: `Clay Mysteries collection: ${videos.length} videos (≥${CLAY_MIN_VIEWS} views).
+        content: `Space collection: ${videos.length} videos (≥${SPACE_MIN_VIEWS} views).
 
 TOP TITLES:
 ${titleLines}
 
-VISUAL SCAN NOTES (real clay competitor thumbs):
+VISUAL SCAN NOTES (real space competitor thumbs):
 ${scanLines || "(no scans)"}
 
-Build the Clay Thumbnail playbook JSON now. Use ONLY this clay niche evidence.`,
+Build the Space Thumb playbook JSON now. Use ONLY this space niche evidence. Never mention clay, tablets, or biblical niches.`,
       },
     ],
   });
@@ -384,12 +384,12 @@ Build the Clay Thumbnail playbook JSON now. Use ONLY this clay niche evidence.`,
     dontList: string[];
   }>(content);
 
-  const playbook: ClayPlaybook = {
+  const playbook: SpacePlaybook = {
     generatedAt: new Date().toISOString(),
-    niche: CLAY_NICHE,
-    minViews: CLAY_MIN_VIEWS,
+    niche: SPACE_NICHE,
+    minViews: SPACE_MIN_VIEWS,
     sampleSize: videos.length,
-    viralThreshold: CLAY_MIN_VIEWS,
+    viralThreshold: SPACE_MIN_VIEWS,
     scanCount: visualLessons.length,
     summary: parsed.summary,
     viralPatterns: parsed.viralPatterns || [],
@@ -400,14 +400,14 @@ Build the Clay Thumbnail playbook JSON now. Use ONLY this clay niche evidence.`,
     visualLessons,
   };
 
-  await persistPlaybook(playbook);
+  await persistSpacePlaybook(playbook);
   return playbook;
 }
 
-export async function pickClayFormatReference(title: string) {
-  const videos = await loadClayVideos();
+export async function pickSpaceFormatReference(title: string) {
+  const videos = await loadSpaceVideos();
   if (!videos.length) {
-    throw new Error("No Clay Mysteries format references in DB");
+    throw new Error("No Space format references in DB");
   }
   const scored = videos.map((v) => {
     const score = scoreCompetitor({
@@ -435,19 +435,22 @@ export async function pickClayFormatReference(title: string) {
 async function extractLayoutBlueprint(thumbnailUrl: string) {
   const completion = await createReasoningCompletion({
     temperature: 0.1,
-    max_tokens: 700,
+    max_tokens: 900,
     messages: [
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: `This is a Clay Mysteries FORMAT REFERENCE thumbnail.
-Extract LAYOUT BLUEPRINT only (zones/graphics). Ignore face identity.
+            text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
+Extract a COMP-FAITHFUL BLUEPRINT for cloning the package (not the exact subject).
+Include:
 - 16:9 zones with %
-- where tablet/artifact/AI subject sits
-- text / banner placement
-- red arrow/circle if present
+- where planet/spacecraft/terrain/anomaly sits
+- EXACT text placement (top strip / lower third / left stack / corner brand)
+- TEXT STYLE: color (white/yellow/etc), stroke/shadow, weight, casing, word count feel
+- border/frame if present
+- red arrow/circle/markers if present
 Return tight bullets, no intro.`,
           },
           { type: "image_url", image_url: { url: thumbnailUrl } },
@@ -456,123 +459,190 @@ Return tight bullets, no intro.`,
     ],
   });
   const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Failed to extract clay layout blueprint");
+  if (!text) throw new Error("Failed to extract space layout blueprint");
   return text;
 }
 
-export async function runClayThumbAgent(input: {
+const SPACE_COMP_TEXT_LOCK = [
+  "SPACE TEXT LOCK (mandatory — look like real competitor space thumbs, not AI text):",
+  "Copy the REFERENCE text STYLE heavily: same placement zone, same casing energy, same weight, same fill color family (usually thick white or yellow ALL-CAPS), same hard black outline/shadow.",
+  "Text must look printed/composited on a real YouTube thumbnail — clean bold sans, crisp edges, slight natural compression — NOT glowing neon, NOT metallic 3D chrome, NOT bubbly AI letters, NOT soft plastic type.",
+  "Keep punch lines SHORT like the comps: 2-5 blunt words (THIS IS JUPITER / WHAT NASA SAW / NASA'S PLAN / NOTHING). No long sentences.",
+  "Do not invent fancy fonts; match the reference's simple high-contrast youtube-thumb typography.",
+].join(" ");
+
+const SPACE_COMP_FIDELITY_LOCK = [
+  "COMP FIDELITY LOCK (mandatory):",
+  "Heavily inspire from the uploaded competitor thumbnail: keep the SAME layout grammar, subject scale, text zone, border/frame treatment, and marker language (arrow/circle) when present.",
+  "Swap only the discovery subject + headline words to fit the NEW title — the package should still feel like that same Space channel style family.",
+  "Prefer documentary / archival / NASA-footage realism from the comps over generic glossy sci-fi CGI.",
+].join(" ");
+
+export async function runSpaceThumbAgent(input: {
   title: string;
   notes?: string;
-}): Promise<ClayAgentResult> {
+}): Promise<SpaceAgentResult> {
   const title = input.title.trim();
   if (!title) throw new Error("Title is required");
 
   const [playbook, picked] = await Promise.all([
-    buildClayPlaybook(false),
-    pickClayFormatReference(title),
+    buildSpacePlaybook(false),
+    pickSpaceFormatReference(title),
   ]);
   const layoutBlueprint = await extractLayoutBlueprint(
     picked.reference.thumbnailUrl,
   );
 
-  const completion = await createReasoningCompletion({
-    temperature: 0.62,
-    messages: [
-      {
-        role: "system",
-        content: `You are Clay Thumbnail Agent.
-Train/generate ONLY from Clay Mysteries competitor titles + thumbs (≥100K).
-Copy LAYOUT from the format reference; invent new clay-niche discovery content for the new title.
+  const playbookBrief = {
+    summary: playbook.summary,
+    viral: playbook.viralPatterns.slice(0, 6),
+    formats: playbook.thumbnailFormats.slice(0, 6),
+    doList: playbook.doList.slice(0, 8),
+    dontList: playbook.dontList.slice(0, 8),
+  };
+
+  async function requestBrief() {
+    return createReasoningCompletion({
+      temperature: 0.4,
+      max_tokens: 1400,
+      messages: [
+        {
+          role: "system",
+          content: `You are Space Thumb Agent.
+Train/generate ONLY from Space competitor titles + thumbs (≥100K).
+HEAVILY copy the format reference package: layout zones, subject scale, border, markers, AND text style/placement.
+Only replace the discovery subject + punch words for the new title.
+
+TEXT RULES (from real space comps):
+- 2-5 blunt ALL-CAPS words max
+- Clean thick sans like competitor thumbs (white/yellow fill + hard black outline)
+- Real YouTube-composited look — never AI glow/chrome/bubble letters
+- Prefer phrases like THIS IS … / WHAT … SAW / NASA'S PLAN / NOTHING
 
 ${THUMB_QUALITY_SYSTEM_RULES}
 
-Return STRICT JSON only:
+Return STRICT JSON only (no markdown):
 {
-  "analysis": "why this clay format fits",
-  "chosenFormat": "short format name",
-  "overlayText": "3-6 word ALL-CAPS punch line (keep the strong thick punch-text style)",
-  "discoveryPlan": "photoreal, unique, lightly-lit clay/ancient discovery visual specific to THIS title — name concrete materials/lighting",
-  "imagePrompt": "edit instruction: use uploaded image as layout template only; replace subjects/text for new title; keep 16:9; thick markers if present; photoreal + lighter objects + sharp text",
-  "whyTheseComps": "why this clay format reference"
-}`
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `NEW TITLE: ${title}
+  "analysis": "why this space format fits + which comp traits you are copying",
+  "chosenFormat": "short format name from playbook/comp",
+  "overlayText": "2-5 word ALL-CAPS punch line matching real space-comp text style",
+  "discoveryPlan": "photoreal space subject for THIS title, matching the reference's scale/lighting language",
+  "imagePrompt": "edit instruction: heavily preserve uploaded comp layout+text style; replace subject/words for new title; 16:9; real youtube thumb typography",
+  "whyTheseComps": "why this space format reference"
+}`,
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
 
-CLAY FORMAT REFERENCE (layout only):
+SPACE FORMAT REFERENCE (COPY PACKAGE HEAVILY — layout + text style):
 ${picked.reference.title} | ${picked.reference.viewCount} views
 ${picked.reference.thumbnailUrl}
 
-LAYOUT BLUEPRINT:
+COMP BLUEPRINT (layout + text style):
 ${layoutBlueprint}
 
-CLAY PLAYBOOK (from clay titles/thumbs only):
-${playbook.summary}
+SPACE PLAYBOOK:
+${playbookBrief.summary}
 VIRAL:
-${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.viral.map((p) => `- ${p}`).join("\n")}
 FORMATS:
-${playbook.thumbnailFormats.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.formats.map((p) => `- ${p}`).join("\n")}
 DO:
-${playbook.doList.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.doList.map((p) => `- ${p}`).join("\n")}
 DON'T:
-${playbook.dontList.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.dontList.map((p) => `- ${p}`).join("\n")}
+
+Top space-comp text examples: NOTHING · THIS IS JUPITER · THIS IS PLUTO · WHAT RUSSIA SAW · NASA'S PLAN · WHAT CHINA SAW · THIS ISN'T GOOD · INSIDE STARSHIP
 
 Produce JSON now.`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: picked.reference.thumbnailUrl },
-          },
-        ] as never,
-      },
-    ],
-  });
+            },
+            {
+              type: "image_url",
+              image_url: { url: picked.reference.thumbnailUrl },
+            },
+          ] as never,
+        },
+      ],
+    });
+  }
 
-  const content = completion.choices[0]?.message?.content?.trim() || "";
-  const parsed = extractJson<{
+  let content = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const completion = await requestBrief();
+    content = completion.choices[0]?.message?.content?.trim() || "";
+    if (content.includes("{")) break;
+  }
+
+  let parsed: {
     analysis: string;
     chosenFormat: string;
     overlayText: string;
     discoveryPlan: string;
     imagePrompt: string;
     whyTheseComps: string;
-  }>(content);
+  };
+  try {
+    parsed = extractJson(content);
+  } catch {
+    // Hard fallback so jobs still render with strong comp/text guidance
+    const words = title
+      .replace(/[^a-zA-Z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    const punch = (
+      words.slice(0, 4).join(" ").toUpperCase() || "THIS IS SPACE"
+    ).slice(0, 42);
+    parsed = {
+      analysis: "Fallback brief — preserve format-reference package heavily.",
+      chosenFormat: playbookBrief.formats[0] || "Cinematic planetary reveal",
+      overlayText: punch,
+      discoveryPlan: `Photoreal space subject that sells: ${title}`,
+      imagePrompt:
+        "Heavily preserve uploaded competitor layout, text zone, border, and marker style; replace subject and punch words for the new title; real youtube-space typography.",
+      whyTheseComps: `Closest space format reference: ${picked.reference.title}`,
+    };
+  }
 
   const imagePrompt = [
-    "Using the uploaded Clay Mysteries thumbnail ONLY as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
-    "Match composition grammar from the clay competitor set only — but invent unique title-specific subjects/props (do not clone the reference artifact).",
+    "Using the uploaded Space competitor thumbnail as a HEAVY STYLE + LAYOUT REFERENCE, create a brand-new original 16:9 YouTube thumbnail that still feels like the same channel package.",
+    "Preserve composition grammar, subject scale, text zone, border/frame, and marker language from the reference as closely as possible.",
+    "Replace only the main discovery subject and the punch words so they sell the new title — do not invent a totally different thumbnail genre.",
     `Sell ONLY this title: ${title}`,
     "Output must be 16:9 (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
-      ? `Banner text exactly (keep it thick, ultra-sharp, high-contrast): ${parsed.overlayText.trim()}`
+      ? `On-image text exactly: ${parsed.overlayText.trim()} — render it like real competitor Space thumbs: clean thick sans ALL-CAPS, hard outline/shadow, no AI glow/chrome/bubble type.`
       : "",
     parsed.discoveryPlan
-      ? `Discovery content (unique + photoreal + lightly lit): ${parsed.discoveryPlan.trim()}`
+      ? `Discovery subject for this title (keep reference lighting/scale language): ${parsed.discoveryPlan.trim()}`
       : "",
+    SPACE_COMP_FIDELITY_LOCK,
+    SPACE_COMP_TEXT_LOCK,
     THUMB_RENDER_QUALITY,
   ]
     .filter(Boolean)
     .join(" ");
 
   const generatePrompt = [
-    "Create an original photoreal 16:9 Clay Mysteries YouTube thumbnail (1280x720).",
+    "Create an original photoreal 16:9 Space YouTube thumbnail (1280x720) heavily inspired by real ≥100K Space competitor packages.",
     `Title: ${title}`,
     parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
-    "Base style ONLY on Clay Mysteries viral packages (ancient tablets, sealed knowledge, AI/biblical reveals).",
-    "Invent unique title-specific discovery details — distinct materials, markings, and lighting so it does not feel generic.",
+    "Clone the reference package grammar: big subject, sparse black space, short blunt headline, optional border/markers.",
+    "Documentary / archival / NASA-footage realism — not generic glossy sci-fi CGI.",
     parsed.overlayText
-      ? `Banner (thick sharp ALL-CAPS punch text): ${parsed.overlayText}`
+      ? `Text (real youtube-comp typography, 2-5 blunt caps): ${parsed.overlayText}`
       : "",
     parsed.discoveryPlan
-      ? `Discovery (lighter objects, clean highlights): ${parsed.discoveryPlan}`
+      ? `Discovery: ${parsed.discoveryPlan}`
       : "",
-    `Layout blueprint: ${layoutBlueprint}`,
+    `Comp blueprint: ${layoutBlueprint}`,
+    SPACE_COMP_FIDELITY_LOCK,
+    SPACE_COMP_TEXT_LOCK,
     THUMB_RENDER_QUALITY,
     "No watermarks, no channel logos, no YouTube UI.",
   ]
@@ -580,7 +650,7 @@ Produce JSON now.`,
     .join(" ");
 
   return {
-    agent: CLAY_AGENT_ID,
+    agent: SPACE_AGENT_ID,
     title,
     playbook,
     competitors: picked.shortlist,
@@ -598,11 +668,11 @@ Produce JSON now.`,
   };
 }
 
-export async function generateWithClayAgent(input: {
+export async function generateWithSpaceAgent(input: {
   title: string;
   notes?: string;
 }) {
-  const brief = await runClayThumbAgent(input);
+  const brief = await runSpaceThumbAgent(input);
   let image: Buffer | null = null;
   let usedRef = brief.formatReference;
 
@@ -627,7 +697,7 @@ export async function generateWithClayAgent(input: {
       break;
     } catch (err) {
       console.warn(
-        "[clay-agent] edit failed",
+        "[space-agent] edit failed",
         ref.youtubeId,
         err instanceof Error ? err.message : err,
       );
@@ -653,20 +723,20 @@ export async function generateWithClayAgent(input: {
   };
 }
 
-export async function getClayAgentStatus() {
+export async function getSpaceAgentStatus() {
   const [playbookRow, videoCount, scanCount] = await Promise.all([
-    prisma.agentPlaybook.findUnique({ where: { id: CLAY_AGENT_ID } }),
+    prisma.agentPlaybook.findUnique({ where: { id: SPACE_AGENT_ID } }),
     prisma.video.count({
-      where: { niche: CLAY_NICHE, viewCount: { gte: CLAY_MIN_VIEWS } },
+      where: { niche: SPACE_NICHE, viewCount: { gte: SPACE_MIN_VIEWS } },
     }),
     prisma.thumbScan.count({
-      where: { video: { niche: CLAY_NICHE, viewCount: { gte: CLAY_MIN_VIEWS } } },
+      where: { video: { niche: SPACE_NICHE, viewCount: { gte: SPACE_MIN_VIEWS } } },
     }),
   ]);
   return {
-    agent: CLAY_AGENT_ID,
-    niche: CLAY_NICHE,
-    minViews: CLAY_MIN_VIEWS,
+    agent: SPACE_AGENT_ID,
+    niche: SPACE_NICHE,
+    minViews: SPACE_MIN_VIEWS,
     trained: Boolean(playbookRow?.summary),
     videoCount,
     scanCount,
@@ -680,6 +750,6 @@ export async function getClayAgentStatus() {
           viralPatterns: playbookRow.viralPatterns,
           thumbnailFormats: playbookRow.thumbnailFormats,
         }
-      : await loadCachedPlaybook(),
+      : await loadCachedSpacePlaybook(),
   };
 }

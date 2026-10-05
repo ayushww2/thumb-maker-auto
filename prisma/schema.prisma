@@ -97,7 +97,7 @@ model Job {
   progress        String    @default("Queued")
   error           String?
   useAgent        Boolean   @default(true)
-  agentType       String    @default("mystery") // mystery | clay
+  agentType       String    @default("mystery") // mystery | clay | space
   prompt          String?
   analysis        String?
   chosenFormat    String?
