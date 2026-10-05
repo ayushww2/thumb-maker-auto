@@ -24,7 +24,9 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [batchTitles, setBatchTitles] = useState("");
   const [notes, setNotes] = useState("");
-  const [agentType, setAgentType] = useState<"mystery" | "clay">("clay");
+  const [agentType, setAgentType] = useState<"mystery" | "clay" | "space">(
+    "space",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queuedIds, setQueuedIds] = useState<string[]>([]);
@@ -112,12 +114,18 @@ export default function Home() {
           Mlin Auto Thumb
         </p>
         <p className="anim-rise-delay mt-3 text-sm font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-          {agentType === "clay" ? "Clay Thumb Agent" : "Mystery Thumb Agent"}
+          {agentType === "space"
+            ? "Space Thumb Agent"
+            : agentType === "clay"
+              ? "Clay Thumb Agent"
+              : "Mystery Thumb Agent"}
         </p>
         <p className="anim-rise-delay mt-4 max-w-2xl text-base text-[var(--muted)] sm:text-lg">
-          {agentType === "clay"
-            ? "Clay thumbnails are trained only on Clay Mysteries competitor titles + thumbs (≥100K views)."
-            : "Submit a title — the job keeps running in the background while comps are matched and rendered."}
+          {agentType === "space"
+            ? "Space thumbs are trained only on Space competitor titles + thumbs (≥100K views)."
+            : agentType === "clay"
+              ? "Clay thumbnails are trained only on Clay Mysteries competitor titles + thumbs (≥100K views)."
+              : "Submit a title — the job keeps running in the background while comps are matched and rendered."}
         </p>
       </header>
 
@@ -130,6 +138,17 @@ export default function Home() {
             Agent
           </legend>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setAgentType("space")}
+              className={`border px-4 py-2 text-sm font-semibold ${
+                agentType === "space"
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]"
+                  : "border-[var(--line)] text-[var(--muted)]"
+              }`}
+            >
+              Space Thumbs
+            </button>
             <button
               type="button"
               onClick={() => setAgentType("clay")}
@@ -194,11 +213,13 @@ export default function Home() {
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={
-                agentType === "clay"
+            placeholder={
+              agentType === "space"
+                ? "What NASA Found on the Dark Side of Jupiter…"
+                : agentType === "clay"
                   ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground…"
                   : "Scientists Opened a Sealed Chamber in the Amazon — What They Found…"
-              }
+            }
               className="w-full border border-[var(--line)] bg-black/25 px-4 py-3 text-lg text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
             />
           </label>
@@ -217,9 +238,11 @@ export default function Home() {
               onChange={(e) => setBatchTitles(e.target.value)}
               rows={8}
               placeholder={
-                agentType === "clay"
-                  ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground\nThe Ethiopian Bible Verse That Names the End Date\nAI Reanalyzed the Sealed Chamber Under Jerusalem…"
-                  : "Scientists Opened a Sealed Chamber in the Amazon — What They Found\nDivers Found a Door Under the Ice — Then It Opened\nThey Dug Under the Vatican Vault — And Froze…"
+                agentType === "space"
+                  ? "What NASA Found Beyond Pluto\nJupiter Is Not What You Think\nThe Object That Will Change Your View of Space Forever…"
+                  : agentType === "clay"
+                    ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground\nThe Ethiopian Bible Verse That Names the End Date\nAI Reanalyzed the Sealed Chamber Under Jerusalem…"
+                    : "Scientists Opened a Sealed Chamber in the Amazon — What They Found\nDivers Found a Door Under the Ice — Then It Opened\nThey Dug Under the Vatican Vault — And Froze…"
               }
               className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 font-mono text-base leading-relaxed text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
             />
@@ -236,9 +259,11 @@ export default function Home() {
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder={
-              agentType === "clay"
-                ? "Copy clay viral layout: ancient tablet / sealed text + punch banner + red marker…"
-                : "News-realism: shocked face, discovery right, thick red arrow + circle…"
+              agentType === "space"
+                ? "Space viral layout: planet/NASA find + shocked reaction + punch banner + red marker…"
+                : agentType === "clay"
+                  ? "Copy clay viral layout: ancient tablet / sealed text + punch banner + red marker…"
+                  : "News-realism: shocked face, discovery right, thick red arrow + circle…"
             }
             className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 text-base text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />

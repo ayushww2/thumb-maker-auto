@@ -14,7 +14,10 @@
     "contactbox:test": "tsx scripts/test-contactbox.ts",
     "clay:seed": "tsx scripts/seed-clay-collection.ts",
     "clay:upload": "tsx scripts/upload-clay-r2.ts",
-    "clay:train": "tsx scripts/build-clay-playbook.ts"
+    "clay:train": "tsx scripts/build-clay-playbook.ts",
+    "space:seed": "tsx scripts/seed-space-collection.ts",
+    "space:upload": "tsx scripts/upload-space-r2.ts",
+    "space:train": "tsx scripts/build-space-playbook.ts"
   },
   "engines": {
     "node": ">=20"

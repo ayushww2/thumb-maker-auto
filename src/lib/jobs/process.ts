@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { generateThumbnailImage } from "@/lib/contactbox";
 import { generateWithClayAgent } from "@/lib/clayThumbAgent";
 import { generateWithMysteryAgent } from "@/lib/mysteryThumbAgent";
+import { generateWithSpaceAgent } from "@/lib/spaceThumbAgent";
 import { getR2Config } from "@/lib/env";
 import { uploadThumbnail } from "@/lib/r2";
 
@@ -40,9 +41,11 @@ export async function processJob(jobId: string): Promise<void> {
       data: {
         status: "running",
         progress:
-          job.agentType === "clay"
-            ? "Clay Thumb Agent starting…"
-            : "Mystery Thumb Agent starting…",
+          job.agentType === "space"
+            ? "Space Thumb Agent starting…"
+            : job.agentType === "clay"
+              ? "Clay Thumb Agent starting…"
+              : "Mystery Thumb Agent starting…",
         startedAt: job.startedAt ?? new Date(),
         error: null,
       },
@@ -61,7 +64,31 @@ export async function processJob(jobId: string): Promise<void> {
       let formatRefUrl: string | null = null;
       let image: Buffer;
 
-      if (job.useAgent && job.agentType === "clay") {
+      if (job.useAgent && job.agentType === "space") {
+        await setProgress(
+          jobId,
+          "Space Agent · scanning ≥100K space titles/thumbs only…",
+        );
+        const result = await generateWithSpaceAgent({
+          title: job.title,
+          notes: job.notes || undefined,
+        });
+        await setProgress(
+          jobId,
+          `Space render 16:9 · format — ${result.brief.formatReference.title.slice(0, 42)}…`,
+        );
+        prompt = result.brief.generatePrompt || result.brief.imagePrompt;
+        analysis = result.brief.analysis;
+        chosenFormat = result.brief.chosenFormat;
+        overlayText = result.brief.overlayText;
+        whyTheseComps = result.brief.whyTheseComps;
+        playbookSummary = result.brief.playbook.summary;
+        competitorsJson = result.brief.competitors;
+        formatRefYoutubeId = result.brief.formatReference.youtubeId;
+        formatRefTitle = result.brief.formatReference.title;
+        formatRefUrl = result.brief.formatReference.thumbnailUrl;
+        image = result.image;
+      } else if (job.useAgent && job.agentType === "clay") {
         await setProgress(
           jobId,
           "Clay Agent · scanning ≥100K clay titles/thumbs only…",

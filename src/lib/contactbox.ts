@@ -157,7 +157,7 @@ export async function probeContactBoxApi(): Promise<ApiProbeResult> {
       const reasoningModel =
         reasoningCandidates[0] || preferred;
 
-      await client.chat.completions.create({
+      await createChatCompletion(client, {
         model: reasoningModel,
         messages: [{ role: "user", content: "Reply with exactly: ok" }],
         max_tokens: 8,
