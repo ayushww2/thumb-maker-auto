@@ -227,7 +227,7 @@ Return STRICT JSON only:
   "overlayText": "on-image text if any",
   "emotionalHook": "why the eye stops",
   "formatLabel": "short format name",
-  "whyItWorks": "why this clay/mystery clickbait package works"
+  "whyItWorks": "why this space/mystery clickbait package works"
 }`,
           },
           { type: "image_url", image_url: { url: input.thumbnailUrl } },
@@ -299,7 +299,7 @@ export async function buildSpacePlaybook(force = false): Promise<SpacePlaybook> 
   const videos = await loadSpaceVideos();
   if (!videos.length) {
     throw new Error(
-      "No Space videos ≥100K found. Run seed-clay-collection first.",
+      "No Space videos ≥100K found. Run seed-space-collection first.",
     );
   }
 
@@ -355,8 +355,8 @@ Return STRICT JSON only:
   "viralPatterns": ["..."],
   "thumbnailFormats": ["composition formats from scans"],
   "titleFormulas": ["title formulas from this niche only"],
-  "doList": ["rules for making clay thumbs"],
-  "dontList": ["what to avoid — including non-space niches"]
+  "doList": ["rules for making space thumbs"],
+  "dontList": ["what to avoid — including non-space niches, clay/biblical content, ancient tablets"]
 }`,
       },
       {
@@ -369,7 +369,7 @@ ${titleLines}
 VISUAL SCAN NOTES (real space competitor thumbs):
 ${scanLines || "(no scans)"}
 
-Build the Clay Thumbnail playbook JSON now. Use ONLY this space niche evidence.`,
+Build the Space Thumb playbook JSON now. Use ONLY this space niche evidence. Never mention clay, tablets, or biblical niches.`,
       },
     ],
   });
@@ -456,7 +456,7 @@ Return tight bullets, no intro.`,
     ],
   });
   const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Failed to extract clay layout blueprint");
+  if (!text) throw new Error("Failed to extract space layout blueprint");
   return text;
 }
 
@@ -482,7 +482,7 @@ export async function runSpaceThumbAgent(input: {
         role: "system",
         content: `You are Space Thumb Agent.
 Train/generate ONLY from Space competitor titles + thumbs (≥100K).
-Copy LAYOUT from the format reference; invent new clay-niche discovery content for the new title.
+Copy LAYOUT from the format reference; invent new space-niche discovery content for the new title (planets, NASA finds, cosmic anomalies).
 
 ${THUMB_QUALITY_SYSTEM_RULES}
 
