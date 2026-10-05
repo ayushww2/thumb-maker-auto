@@ -493,12 +493,22 @@ export async function runSpaceThumbAgent(input: {
     picked.reference.thumbnailUrl,
   );
 
-  const completion = await createReasoningCompletion({
-    temperature: 0.4,
-    messages: [
-      {
-        role: "system",
-        content: `You are Space Thumb Agent.
+  const playbookBrief = {
+    summary: playbook.summary,
+    viral: playbook.viralPatterns.slice(0, 6),
+    formats: playbook.thumbnailFormats.slice(0, 6),
+    doList: playbook.doList.slice(0, 8),
+    dontList: playbook.dontList.slice(0, 8),
+  };
+
+  async function requestBrief() {
+    return createReasoningCompletion({
+      temperature: 0.4,
+      max_tokens: 1400,
+      messages: [
+        {
+          role: "system",
+          content: `You are Space Thumb Agent.
 Train/generate ONLY from Space competitor titles + thumbs (≥100K).
 HEAVILY copy the format reference package: layout zones, subject scale, border, markers, AND text style/placement.
 Only replace the discovery subject + punch words for the new title.
@@ -511,7 +521,7 @@ TEXT RULES (from real space comps):
 
 ${THUMB_QUALITY_SYSTEM_RULES}
 
-Return STRICT JSON only:
+Return STRICT JSON only (no markdown):
 {
   "analysis": "why this space format fits + which comp traits you are copying",
   "chosenFormat": "short format name from playbook/comp",
@@ -520,13 +530,13 @@ Return STRICT JSON only:
   "imagePrompt": "edit instruction: heavily preserve uploaded comp layout+text style; replace subject/words for new title; 16:9; real youtube thumb typography",
   "whyTheseComps": "why this space format reference"
 }`,
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `NEW TITLE: ${title}
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
 
 SPACE FORMAT REFERENCE (COPY PACKAGE HEAVILY — layout + text style):
@@ -536,39 +546,67 @@ ${picked.reference.thumbnailUrl}
 COMP BLUEPRINT (layout + text style):
 ${layoutBlueprint}
 
-SPACE PLAYBOOK (from space titles/thumbs only):
-${playbook.summary}
+SPACE PLAYBOOK:
+${playbookBrief.summary}
 VIRAL:
-${playbook.viralPatterns.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.viral.map((p) => `- ${p}`).join("\n")}
 FORMATS:
-${playbook.thumbnailFormats.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.formats.map((p) => `- ${p}`).join("\n")}
 DO:
-${playbook.doList.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.doList.map((p) => `- ${p}`).join("\n")}
 DON'T:
-${playbook.dontList.map((p) => `- ${p}`).join("\n")}
+${playbookBrief.dontList.map((p) => `- ${p}`).join("\n")}
 
-Top space-comp text examples to emulate: NOTHING · THIS IS JUPITER · THIS IS PLUTO · WHAT RUSSIA SAW · NASA'S PLAN · WHAT CHINA SAW · THIS ISN'T GOOD · INSIDE STARSHIP
+Top space-comp text examples: NOTHING · THIS IS JUPITER · THIS IS PLUTO · WHAT RUSSIA SAW · NASA'S PLAN · WHAT CHINA SAW · THIS ISN'T GOOD · INSIDE STARSHIP
 
 Produce JSON now.`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: picked.reference.thumbnailUrl },
-          },
-        ] as never,
-      },
-    ],
-  });
+            },
+            {
+              type: "image_url",
+              image_url: { url: picked.reference.thumbnailUrl },
+            },
+          ] as never,
+        },
+      ],
+    });
+  }
 
-  const content = completion.choices[0]?.message?.content?.trim() || "";
-  const parsed = extractJson<{
+  let content = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const completion = await requestBrief();
+    content = completion.choices[0]?.message?.content?.trim() || "";
+    if (content.includes("{")) break;
+  }
+
+  let parsed: {
     analysis: string;
     chosenFormat: string;
     overlayText: string;
     discoveryPlan: string;
     imagePrompt: string;
     whyTheseComps: string;
-  }>(content);
+  };
+  try {
+    parsed = extractJson(content);
+  } catch {
+    // Hard fallback so jobs still render with strong comp/text guidance
+    const words = title
+      .replace(/[^a-zA-Z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    const punch = (
+      words.slice(0, 4).join(" ").toUpperCase() || "THIS IS SPACE"
+    ).slice(0, 42);
+    parsed = {
+      analysis: "Fallback brief — preserve format-reference package heavily.",
+      chosenFormat: playbookBrief.formats[0] || "Cinematic planetary reveal",
+      overlayText: punch,
+      discoveryPlan: `Photoreal space subject that sells: ${title}`,
+      imagePrompt:
+        "Heavily preserve uploaded competitor layout, text zone, border, and marker style; replace subject and punch words for the new title; real youtube-space typography.",
+      whyTheseComps: `Closest space format reference: ${picked.reference.title}`,
+    };
+  }
 
   const imagePrompt = [
     "Using the uploaded Space competitor thumbnail as a HEAVY STYLE + LAYOUT REFERENCE, create a brand-new original 16:9 YouTube thumbnail that still feels like the same channel package.",
