@@ -807,9 +807,10 @@ Then note shared formats across the set. Be concrete.`,
         type: "text",
         text: `\n#${i + 1} ${c.viewCount.toLocaleString()} views — ${c.title}`,
       });
+      const visionUrl = await resolveVisionImageUrl(c.thumbnailUrl);
       content.push({
         type: "image_url",
-        image_url: { url: c.thumbnailUrl },
+        image_url: { url: visionUrl },
       });
     }
 
