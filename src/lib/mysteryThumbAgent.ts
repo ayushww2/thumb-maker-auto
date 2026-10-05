@@ -6,6 +6,7 @@ import {
   createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
+  resolveVisionImageUrl,
 } from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
@@ -472,16 +473,18 @@ export async function pickFormatReference(
 async function extractLayoutBlueprint(
   reference: CompetitorRef,
 ): Promise<string> {
-  const completion = await createReasoningCompletion({
-    temperature: 0.1,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
+  const visionUrl = await resolveVisionImageUrl(reference.thumbnailUrl);
+  try {
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `This image is the FORMAT REFERENCE for a 16:9 YouTube mystery thumbnail.
 Extract a precise LAYOUT BLUEPRINT to copy (positions/zones/graphics only).
 IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing of the person; only WHERE the reaction-face zone sits.
 - aspect (must be 16:9)
@@ -491,15 +494,26 @@ IGNORE face identity — do NOT describe hair color, ethnicity, age, or clothing
 - where red arrow + circle sit and how thick they look
 - color blocks used for realism (blue banner, red accents, etc.)
 Return a tight bullet blueprint, no intro.`,
-          },
-          { type: "image_url", image_url: { url: reference.thumbnailUrl } },
-        ] as never,
-      },
-    ],
-  });
-  const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Failed to extract layout blueprint from format reference");
-  return text;
+            },
+            { type: "image_url", image_url: { url: visionUrl } },
+          ] as never,
+        },
+      ],
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch (err) {
+    console.warn(
+      "[mystery-agent] layout blueprint vision failed; using text fallback",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return [
+    "16:9 mystery package",
+    "Reaction-face zone on one side (~40%), discovery scene on the other",
+    "Bold ALL-CAPS banner/punch text with high contrast",
+    "Thick red arrow + red circle on the clue",
+  ].join("\n");
 }
 
 async function scanOneThumb(input: {
@@ -511,6 +525,7 @@ async function scanOneThumb(input: {
   tier: "viral" | "low";
 }): Promise<ThumbScanLesson | null> {
   try {
+    const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
     const completion = await createReasoningCompletion({
       temperature: 0.2,
       max_tokens: 700,
@@ -536,7 +551,7 @@ Return STRICT JSON only:
   "whyItWorks": "1-2 sentences on why this package works or fails for views"
 }`,
             },
-            { type: "image_url", image_url: { url: input.thumbnailUrl } },
+            { type: "image_url", image_url: { url: visionUrl } },
           ] as never,
         },
       ],
@@ -848,6 +863,7 @@ export async function runMysteryThumbAgent(input: {
   ]);
 
   const { reference, shortlist } = picked;
+  const visionUrl = await resolveVisionImageUrl(reference.thumbnailUrl);
   const layoutBlueprint = await extractLayoutBlueprint(reference);
   const competitors = shortlist.map((c) =>
     c.youtubeId === reference.youtubeId ? { ...c, isFormatReference: true } : c,
@@ -920,7 +936,7 @@ Produce the JSON edit brief now.`,
           },
           {
             type: "image_url",
-            image_url: { url: reference.thumbnailUrl },
+            image_url: { url: visionUrl },
           },
         ] as never,
       },

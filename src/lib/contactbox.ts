@@ -305,7 +305,9 @@ function isSoftImageEditError(err: unknown): boolean {
   return (
     isModelAvailabilityError(err) ||
     /failed to download file/i.test(msg) ||
+    /error while downloading file/i.test(msg) ||
     /error getting file type/i.test(msg) ||
+    /upstream status code:\s*404/i.test(msg) ||
     /invalid_image/i.test(msg) ||
     /unsupported image/i.test(msg) ||
     /404/.test(msg) ||
@@ -357,6 +359,37 @@ async function downloadReferenceBytes(
   throw new Error(
     `Failed to download format reference (${errors.slice(0, 3).join(" | ")})`,
   );
+}
+
+/** Download a thumb and return a data URL ContactBox vision can read without upstream fetch. */
+export async function resolveImageDataUrl(
+  referenceImageUrl: string,
+): Promise<string> {
+  const { bytes, contentType } = await downloadReferenceBytes(referenceImageUrl);
+  const mime = contentType.includes("png")
+    ? "image/png"
+    : contentType.includes("webp")
+      ? "image/webp"
+      : "image/jpeg";
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+
+/**
+ * Best-effort vision URL: prefer data URL so ContactBox never 404s on remote thumbs.
+ * Falls back to the original URL if every download candidate fails.
+ */
+export async function resolveVisionImageUrl(
+  referenceImageUrl: string,
+): Promise<string> {
+  try {
+    return await resolveImageDataUrl(referenceImageUrl);
+  } catch (err) {
+    console.warn(
+      "[contactbox] vision data-url resolve failed; using remote url",
+      getErrorMessage(err),
+    );
+    return referenceImageUrl;
+  }
 }
 
 function extractB64FromUnknown(event: unknown): string | null {

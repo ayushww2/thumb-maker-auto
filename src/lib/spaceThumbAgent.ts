@@ -6,6 +6,7 @@ import {
   createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
+  resolveVisionImageUrl,
 } from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
@@ -204,6 +205,7 @@ async function scanSpaceThumb(input: {
   thumbnailUrl: string;
   videoDbId: string;
 }) {
+  const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
   const completion = await createReasoningCompletion({
     temperature: 0.2,
     max_tokens: 700,
@@ -214,7 +216,7 @@ async function scanSpaceThumb(input: {
           {
             type: "text",
             text: `You are Space Thumb Agent studying a Space competitor YouTube thumbnail.
-ONLY describe what is visible. This niche is ancient tablets / Enoch / Sumerian / biblical AI reveals / sealed chambers.
+ONLY describe what is visible. This niche is planets / NASA finds / JWST / spacecraft / cosmic anomalies (≥100K Space comps).
 
 Title: ${input.title}
 Views: ${input.viewCount}
@@ -230,7 +232,7 @@ Return STRICT JSON only:
   "whyItWorks": "why this space/mystery clickbait package works"
 }`,
           },
-          { type: "image_url", image_url: { url: input.thumbnailUrl } },
+          { type: "image_url", image_url: { url: visionUrl } },
         ] as never,
       },
     ],
@@ -433,16 +435,18 @@ export async function pickSpaceFormatReference(title: string) {
 }
 
 async function extractLayoutBlueprint(thumbnailUrl: string) {
-  const completion = await createReasoningCompletion({
-    temperature: 0.1,
-    max_tokens: 900,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
+  const visionUrl = await resolveVisionImageUrl(thumbnailUrl);
+  try {
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 900,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
 Extract a COMP-FAITHFUL BLUEPRINT for cloning the package (not the exact subject).
 Include:
 - 16:9 zones with %
@@ -452,15 +456,27 @@ Include:
 - border/frame if present
 - red arrow/circle/markers if present
 Return tight bullets, no intro.`,
-          },
-          { type: "image_url", image_url: { url: thumbnailUrl } },
-        ] as never,
-      },
-    ],
-  });
-  const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Failed to extract space layout blueprint");
-  return text;
+            },
+            { type: "image_url", image_url: { url: visionUrl } },
+          ] as never,
+        },
+      ],
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch (err) {
+    console.warn(
+      "[space-agent] layout blueprint vision failed; using text fallback",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return [
+    "16:9 cinematic space package",
+    "Large planetary/spacecraft subject dominant (60-75% frame)",
+    "Short blunt ALL-CAPS punch text in clear negative-space zone (top strip or lower third)",
+    "Thick white/yellow fill + hard black outline typography",
+    "Sparse black space background, optional thin border, optional red marker",
+  ].join("\n");
 }
 
 const SPACE_COMP_TEXT_LOCK = [
@@ -510,6 +526,7 @@ export async function runSpaceThumbAgent(input: {
     buildSpacePlaybook(false),
     pickSpaceFormatReference(title),
   ]);
+  const visionUrl = await resolveVisionImageUrl(picked.reference.thumbnailUrl);
   const layoutBlueprint = await extractLayoutBlueprint(
     picked.reference.thumbnailUrl,
   );
@@ -584,7 +601,7 @@ Produce JSON now.`,
             },
             {
               type: "image_url",
-              image_url: { url: picked.reference.thumbnailUrl },
+              image_url: { url: visionUrl },
             },
           ] as never,
         },
@@ -594,9 +611,17 @@ Produce JSON now.`,
 
   let content = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const completion = await requestBrief();
-    content = completion.choices[0]?.message?.content?.trim() || "";
-    if (content.includes("{")) break;
+    try {
+      const completion = await requestBrief();
+      content = completion.choices[0]?.message?.content?.trim() || "";
+      if (content.includes("{")) break;
+    } catch (err) {
+      console.warn(
+        "[space-agent] brief attempt failed",
+        attempt,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   let parsed: {

@@ -6,6 +6,7 @@ import {
   createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
+  resolveVisionImageUrl,
 } from "@/lib/contactbox";
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
@@ -204,6 +205,7 @@ async function scanClayThumb(input: {
   thumbnailUrl: string;
   videoDbId: string;
 }) {
+  const visionUrl = await resolveVisionImageUrl(input.thumbnailUrl);
   const completion = await createReasoningCompletion({
     temperature: 0.2,
     max_tokens: 700,
@@ -230,7 +232,7 @@ Return STRICT JSON only:
   "whyItWorks": "why this clay/mystery clickbait package works"
 }`,
           },
-          { type: "image_url", image_url: { url: input.thumbnailUrl } },
+          { type: "image_url", image_url: { url: visionUrl } },
         ] as never,
       },
     ],
@@ -433,31 +435,44 @@ export async function pickClayFormatReference(title: string) {
 }
 
 async function extractLayoutBlueprint(thumbnailUrl: string) {
-  const completion = await createReasoningCompletion({
-    temperature: 0.1,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `This is a Clay Mysteries FORMAT REFERENCE thumbnail.
+  const visionUrl = await resolveVisionImageUrl(thumbnailUrl);
+  try {
+    const completion = await createReasoningCompletion({
+      temperature: 0.1,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `This is a Clay Mysteries FORMAT REFERENCE thumbnail.
 Extract LAYOUT BLUEPRINT only (zones/graphics). Ignore face identity.
 - 16:9 zones with %
 - where tablet/artifact/AI subject sits
 - text / banner placement
 - red arrow/circle if present
 Return tight bullets, no intro.`,
-          },
-          { type: "image_url", image_url: { url: thumbnailUrl } },
-        ] as never,
-      },
-    ],
-  });
-  const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error("Failed to extract clay layout blueprint");
-  return text;
+            },
+            { type: "image_url", image_url: { url: visionUrl } },
+          ] as never,
+        },
+      ],
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch (err) {
+    console.warn(
+      "[clay-agent] layout blueprint vision failed; using text fallback",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return [
+    "16:9 clay mysteries package",
+    "Ancient tablet/artifact dominant with punch banner zone",
+    "Thick ALL-CAPS banner text, high contrast",
+    "Optional thick red arrow/circle marker",
+  ].join("\n");
 }
 
 export async function runClayThumbAgent(input: {
@@ -471,6 +486,7 @@ export async function runClayThumbAgent(input: {
     buildClayPlaybook(false),
     pickClayFormatReference(title),
   ]);
+  const visionUrl = await resolveVisionImageUrl(picked.reference.thumbnailUrl);
   const layoutBlueprint = await extractLayoutBlueprint(
     picked.reference.thumbnailUrl,
   );
@@ -526,7 +542,7 @@ Produce JSON now.`,
           },
           {
             type: "image_url",
-            image_url: { url: picked.reference.thumbnailUrl },
+            image_url: { url: visionUrl },
           },
         ] as never,
       },
