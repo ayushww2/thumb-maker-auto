@@ -260,7 +260,7 @@ export default function Home() {
             rows={3}
             placeholder={
               agentType === "space"
-                ? "Space viral layout: planet/NASA find + shocked reaction + punch banner + red marker…"
+                ? "Heavy comp copy: same layout + real youtube-space text (THIS IS … / WHAT NASA SAW), planet/NASA find dominant…"
                 : agentType === "clay"
                   ? "Copy clay viral layout: ancient tablet / sealed text + punch banner + red marker…"
                   : "News-realism: shocked face, discovery right, thick red arrow + circle…"

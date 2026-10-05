@@ -435,19 +435,22 @@ export async function pickSpaceFormatReference(title: string) {
 async function extractLayoutBlueprint(thumbnailUrl: string) {
   const completion = await createReasoningCompletion({
     temperature: 0.1,
-    max_tokens: 700,
+    max_tokens: 900,
     messages: [
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: `This is a Space FORMAT REFERENCE thumbnail.
-Extract LAYOUT BLUEPRINT only (zones/graphics). Ignore face identity.
+            text: `This is a real Space YouTube FORMAT REFERENCE thumbnail (≥100K).
+Extract a COMP-FAITHFUL BLUEPRINT for cloning the package (not the exact subject).
+Include:
 - 16:9 zones with %
-- where tablet/artifact/AI subject sits
-- text / banner placement
-- red arrow/circle if present
+- where planet/spacecraft/terrain/anomaly sits
+- EXACT text placement (top strip / lower third / left stack / corner brand)
+- TEXT STYLE: color (white/yellow/etc), stroke/shadow, weight, casing, word count feel
+- border/frame if present
+- red arrow/circle/markers if present
 Return tight bullets, no intro.`,
           },
           { type: "image_url", image_url: { url: thumbnailUrl } },
@@ -459,6 +462,21 @@ Return tight bullets, no intro.`,
   if (!text) throw new Error("Failed to extract space layout blueprint");
   return text;
 }
+
+const SPACE_COMP_TEXT_LOCK = [
+  "SPACE TEXT LOCK (mandatory — look like real competitor space thumbs, not AI text):",
+  "Copy the REFERENCE text STYLE heavily: same placement zone, same casing energy, same weight, same fill color family (usually thick white or yellow ALL-CAPS), same hard black outline/shadow.",
+  "Text must look printed/composited on a real YouTube thumbnail — clean bold sans, crisp edges, slight natural compression — NOT glowing neon, NOT metallic 3D chrome, NOT bubbly AI letters, NOT soft plastic type.",
+  "Keep punch lines SHORT like the comps: 2-5 blunt words (THIS IS JUPITER / WHAT NASA SAW / NASA'S PLAN / NOTHING). No long sentences.",
+  "Do not invent fancy fonts; match the reference's simple high-contrast youtube-thumb typography.",
+].join(" ");
+
+const SPACE_COMP_FIDELITY_LOCK = [
+  "COMP FIDELITY LOCK (mandatory):",
+  "Heavily inspire from the uploaded competitor thumbnail: keep the SAME layout grammar, subject scale, text zone, border/frame treatment, and marker language (arrow/circle) when present.",
+  "Swap only the discovery subject + headline words to fit the NEW title — the package should still feel like that same Space channel style family.",
+  "Prefer documentary / archival / NASA-footage realism from the comps over generic glossy sci-fi CGI.",
+].join(" ");
 
 export async function runSpaceThumbAgent(input: {
   title: string;
@@ -476,25 +494,32 @@ export async function runSpaceThumbAgent(input: {
   );
 
   const completion = await createReasoningCompletion({
-    temperature: 0.62,
+    temperature: 0.4,
     messages: [
       {
         role: "system",
         content: `You are Space Thumb Agent.
 Train/generate ONLY from Space competitor titles + thumbs (≥100K).
-Copy LAYOUT from the format reference; invent new space-niche discovery content for the new title (planets, NASA finds, cosmic anomalies).
+HEAVILY copy the format reference package: layout zones, subject scale, border, markers, AND text style/placement.
+Only replace the discovery subject + punch words for the new title.
+
+TEXT RULES (from real space comps):
+- 2-5 blunt ALL-CAPS words max
+- Clean thick sans like competitor thumbs (white/yellow fill + hard black outline)
+- Real YouTube-composited look — never AI glow/chrome/bubble letters
+- Prefer phrases like THIS IS … / WHAT … SAW / NASA'S PLAN / NOTHING
 
 ${THUMB_QUALITY_SYSTEM_RULES}
 
 Return STRICT JSON only:
 {
-  "analysis": "why this space format fits",
-  "chosenFormat": "short format name",
-  "overlayText": "3-6 word ALL-CAPS punch line (keep the strong thick punch-text style)",
-  "discoveryPlan": "photoreal, unique, lightly-lit space/cosmos discovery visual specific to THIS title — name concrete materials/lighting",
-  "imagePrompt": "edit instruction: use uploaded image as layout template only; replace subjects/text for new title; keep 16:9; thick markers if present; photoreal + lighter objects + sharp text",
+  "analysis": "why this space format fits + which comp traits you are copying",
+  "chosenFormat": "short format name from playbook/comp",
+  "overlayText": "2-5 word ALL-CAPS punch line matching real space-comp text style",
+  "discoveryPlan": "photoreal space subject for THIS title, matching the reference's scale/lighting language",
+  "imagePrompt": "edit instruction: heavily preserve uploaded comp layout+text style; replace subject/words for new title; 16:9; real youtube thumb typography",
   "whyTheseComps": "why this space format reference"
-}`
+}`,
       },
       {
         role: "user",
@@ -504,11 +529,11 @@ Return STRICT JSON only:
             text: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
 
-SPACE FORMAT REFERENCE (layout only):
+SPACE FORMAT REFERENCE (COPY PACKAGE HEAVILY — layout + text style):
 ${picked.reference.title} | ${picked.reference.viewCount} views
 ${picked.reference.thumbnailUrl}
 
-LAYOUT BLUEPRINT:
+COMP BLUEPRINT (layout + text style):
 ${layoutBlueprint}
 
 SPACE PLAYBOOK (from space titles/thumbs only):
@@ -521,6 +546,8 @@ DO:
 ${playbook.doList.map((p) => `- ${p}`).join("\n")}
 DON'T:
 ${playbook.dontList.map((p) => `- ${p}`).join("\n")}
+
+Top space-comp text examples to emulate: NOTHING · THIS IS JUPITER · THIS IS PLUTO · WHAT RUSSIA SAW · NASA'S PLAN · WHAT CHINA SAW · THIS ISN'T GOOD · INSIDE STARSHIP
 
 Produce JSON now.`,
           },
@@ -544,35 +571,40 @@ Produce JSON now.`,
   }>(content);
 
   const imagePrompt = [
-    "Using the uploaded Space thumbnail ONLY as a LAYOUT TEMPLATE, create a brand-new original 16:9 YouTube thumbnail.",
-    "Match composition grammar from the space competitor set only — but invent unique title-specific subjects/props (do not clone the reference artifact).",
+    "Using the uploaded Space competitor thumbnail as a HEAVY STYLE + LAYOUT REFERENCE, create a brand-new original 16:9 YouTube thumbnail that still feels like the same channel package.",
+    "Preserve composition grammar, subject scale, text zone, border/frame, and marker language from the reference as closely as possible.",
+    "Replace only the main discovery subject and the punch words so they sell the new title — do not invent a totally different thumbnail genre.",
     `Sell ONLY this title: ${title}`,
     "Output must be 16:9 (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
-      ? `Banner text exactly (keep it thick, ultra-sharp, high-contrast): ${parsed.overlayText.trim()}`
+      ? `On-image text exactly: ${parsed.overlayText.trim()} — render it like real competitor Space thumbs: clean thick sans ALL-CAPS, hard outline/shadow, no AI glow/chrome/bubble type.`
       : "",
     parsed.discoveryPlan
-      ? `Discovery content (unique + photoreal + lightly lit): ${parsed.discoveryPlan.trim()}`
+      ? `Discovery subject for this title (keep reference lighting/scale language): ${parsed.discoveryPlan.trim()}`
       : "",
+    SPACE_COMP_FIDELITY_LOCK,
+    SPACE_COMP_TEXT_LOCK,
     THUMB_RENDER_QUALITY,
   ]
     .filter(Boolean)
     .join(" ");
 
   const generatePrompt = [
-    "Create an original photoreal 16:9 Space YouTube thumbnail (1280x720).",
+    "Create an original photoreal 16:9 Space YouTube thumbnail (1280x720) heavily inspired by real ≥100K Space competitor packages.",
     `Title: ${title}`,
     parsed.chosenFormat ? `Format: ${parsed.chosenFormat}` : "",
-    "Base style ONLY on Space viral packages (NASA discoveries, planets, cosmic edges, anomalous space objects).",
-    "Invent unique title-specific discovery details — distinct materials, markings, and lighting so it does not feel generic.",
+    "Clone the reference package grammar: big subject, sparse black space, short blunt headline, optional border/markers.",
+    "Documentary / archival / NASA-footage realism — not generic glossy sci-fi CGI.",
     parsed.overlayText
-      ? `Banner (thick sharp ALL-CAPS punch text): ${parsed.overlayText}`
+      ? `Text (real youtube-comp typography, 2-5 blunt caps): ${parsed.overlayText}`
       : "",
     parsed.discoveryPlan
-      ? `Discovery (lighter objects, clean highlights): ${parsed.discoveryPlan}`
+      ? `Discovery: ${parsed.discoveryPlan}`
       : "",
-    `Layout blueprint: ${layoutBlueprint}`,
+    `Comp blueprint: ${layoutBlueprint}`,
+    SPACE_COMP_FIDELITY_LOCK,
+    SPACE_COMP_TEXT_LOCK,
     THUMB_RENDER_QUALITY,
     "No watermarks, no channel logos, no YouTube UI.",
   ]
