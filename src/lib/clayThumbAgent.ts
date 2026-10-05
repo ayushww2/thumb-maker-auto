@@ -3,6 +3,7 @@ import path from "path";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import {
+  canFetchReferenceImage,
   createReasoningCompletion,
   generateThumbnailFromReference,
   generateThumbnailImage,
@@ -417,7 +418,9 @@ export async function pickClayFormatReference(title: string) {
   if (!videos.length) {
     throw new Error("No Clay Mysteries format references in DB");
   }
-  const scored = videos.map((v) => {
+  const withThumbs = videos.filter((v) => Boolean(v.r2ThumbnailUrl));
+  const pool = withThumbs.length ? withThumbs : videos;
+  const scored = pool.map((v) => {
     const score = scoreCompetitor({
       query: title,
       title: v.title,
@@ -431,11 +434,26 @@ export async function pickClayFormatReference(title: string) {
       videoUrl: v.videoUrl,
       channelName: v.channel.name,
       score,
-      fitness: score * 0.45 + Math.min(0.55, Math.log10(v.viewCount + 1) / 12),
+      fitness:
+        score * 0.45 +
+        Math.min(0.55, Math.log10(v.viewCount + 1) / 12) +
+        (v.r2ThumbnailUrl ? 0.15 : 0),
     };
   });
   scored.sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount);
-  const reference = { ...scored[0], isFormatReference: true };
+
+  let reference = { ...scored[0], isFormatReference: true };
+  for (const candidate of scored.slice(0, 12)) {
+    if (await canFetchReferenceImage(candidate.thumbnailUrl)) {
+      reference = { ...candidate, isFormatReference: true };
+      break;
+    }
+    console.warn(
+      "[clay-agent] skipping undownloadable format ref",
+      candidate.youtubeId,
+    );
+  }
+
   const shortlist = scored.slice(0, 5).map(({ fitness: _f, ...rest }) => rest);
   return { reference, shortlist, candidates: scored.slice(0, 8) };
 }

@@ -93,20 +93,53 @@ async function completionFromStream(
   } as OpenAI.Chat.ChatCompletion;
 }
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+const CHAT_TIMEOUT_MS = 90_000;
+const IMAGE_TIMEOUT_MS = 180_000;
+
 async function createChatCompletion(
   client: OpenAI,
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming, "model"> & {
     model: string;
   },
 ): Promise<OpenAI.Chat.ChatCompletion> {
-  // Always prefer streaming for prompts; fall back to non-stream if empty/fail.
+  // Always prefer streaming for prompts; fall back to non-stream if empty/fail/timeout.
   if (getReasoningStreaming()) {
     try {
-      const stream = await client.chat.completions.create({
-        ...params,
-        stream: true,
-      });
-      const completion = await completionFromStream(stream, params.model);
+      const stream = await withTimeout(
+        client.chat.completions.create({
+          ...params,
+          stream: true,
+        }),
+        CHAT_TIMEOUT_MS,
+        `chat stream ${params.model}`,
+      );
+      const completion = await withTimeout(
+        completionFromStream(stream, params.model),
+        CHAT_TIMEOUT_MS,
+        `chat stream read ${params.model}`,
+      );
       const text = completion.choices[0]?.message?.content?.trim() || "";
       if (text) return completion;
       console.warn(
@@ -121,7 +154,11 @@ async function createChatCompletion(
       );
     }
   }
-  return client.chat.completions.create(params);
+  return withTimeout(
+    client.chat.completions.create(params),
+    CHAT_TIMEOUT_MS,
+    `chat ${params.model}`,
+  );
 }
 
 export function createContactBoxClient() {
@@ -132,6 +169,8 @@ export function createContactBoxClient() {
   return new OpenAI({
     apiKey,
     baseURL: getContactBoxBaseUrl(),
+    timeout: IMAGE_TIMEOUT_MS,
+    maxRetries: 1,
   });
 }
 
@@ -143,6 +182,8 @@ export function createOpenAIClient() {
   return new OpenAI({
     apiKey,
     baseURL: getOpenAIBaseUrl(),
+    timeout: IMAGE_TIMEOUT_MS,
+    maxRetries: 1,
   });
 }
 
@@ -505,19 +546,27 @@ async function generateImageWithFallback(prompt: string): Promise<Buffer> {
     for (const model of getImageModelFallbacks()) {
       // Prefer streaming high-quality generation (user requested streaming for thumbs).
       try {
-        const stream = (await client.images.generate({
-          model,
-          prompt,
-          n: 1,
-          size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
-          quality,
-          stream: true,
-          partial_images: 1,
-        } as OpenAI.Images.ImageGenerateParams & {
-          stream: true;
-          partial_images: number;
-        })) as unknown as AsyncIterable<unknown>;
-        return await bufferFromImageStream(stream);
+        const stream = (await withTimeout(
+          client.images.generate({
+            model,
+            prompt,
+            n: 1,
+            size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
+            quality,
+            stream: true,
+            partial_images: 1,
+          } as OpenAI.Images.ImageGenerateParams & {
+            stream: true;
+            partial_images: number;
+          }),
+          IMAGE_TIMEOUT_MS,
+          `${model} image stream start`,
+        )) as unknown as AsyncIterable<unknown>;
+        return await withTimeout(
+          bufferFromImageStream(stream),
+          IMAGE_TIMEOUT_MS,
+          `${model} image stream read`,
+        );
       } catch (err) {
         const msg = getErrorMessage(err);
         errors.push(`${model}/stream: ${msg}`);
@@ -525,13 +574,17 @@ async function generateImageWithFallback(prompt: string): Promise<Buffer> {
       }
 
       try {
-        const result = await client.images.generate({
-          model,
-          prompt,
-          n: 1,
-          size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
-          quality,
-        });
+        const result = await withTimeout(
+          client.images.generate({
+            model,
+            prompt,
+            n: 1,
+            size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
+            quality,
+          }),
+          IMAGE_TIMEOUT_MS,
+          `${model} image generate`,
+        );
         const item = result.data?.[0];
         if (!item) throw new Error("Image generation returned no data");
         return bufferFromImageResponse(item);
@@ -549,13 +602,17 @@ async function generateImageWithFallback(prompt: string): Promise<Buffer> {
     const client = createOpenAIClient();
     const model = getOpenAIImageModel();
     try {
-      const result = await client.images.generate({
-        model,
-        prompt,
-        n: 1,
-        size: model === "dall-e-3" ? "1792x1024" : "1024x1024",
-        quality: quality === "high" ? "hd" : "standard",
-      });
+      const result = await withTimeout(
+        client.images.generate({
+          model,
+          prompt,
+          n: 1,
+          size: model === "dall-e-3" ? "1792x1024" : "1024x1024",
+          quality: quality === "high" ? "hd" : "standard",
+        }),
+        IMAGE_TIMEOUT_MS,
+        `${model} openai generate`,
+      );
       const item = result.data?.[0];
       if (!item) throw new Error("OpenAI image generation returned no data");
       return bufferFromImageResponse(item);
@@ -660,11 +717,16 @@ export async function generateThumbnailFromReference(input: {
         );
 
         const base = getContactBoxBaseUrl().replace(/\/$/, "");
-        const res = await fetch(`${base}/images/edits`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
-          body: form,
-        });
+        const res = await withTimeout(
+          fetch(`${base}/images/edits`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
+            body: form,
+            signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+          }),
+          IMAGE_TIMEOUT_MS + 5_000,
+          `${model} edits stream`,
+        );
         const contentTypeHeader = res.headers.get("content-type") || "";
         if (!res.ok) {
           const json = (await res.json().catch(() => ({}))) as {
@@ -679,7 +741,11 @@ export async function generateThumbnailFromReference(input: {
           contentTypeHeader.includes("ndjson") ||
           contentTypeHeader.includes("octet-stream")
         ) {
-          return await bufferFromSseResponse(res);
+          return await withTimeout(
+            bufferFromSseResponse(res),
+            IMAGE_TIMEOUT_MS,
+            `${model} edits stream read`,
+          );
         }
         // Gateway may still return JSON even when stream=true was requested.
         const json = (await res.json()) as {
@@ -708,11 +774,16 @@ export async function generateThumbnailFromReference(input: {
         );
 
         const base = getContactBoxBaseUrl().replace(/\/$/, "");
-        const res = await fetch(`${base}/images/edits`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
-          body: form,
-        });
+        const res = await withTimeout(
+          fetch(`${base}/images/edits`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getContactBoxApiKey()}` },
+            body: form,
+            signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+          }),
+          IMAGE_TIMEOUT_MS + 5_000,
+          `${model} edits`,
+        );
         const json = (await res.json()) as {
           error?: { message?: string };
           data?: Array<{ b64_json?: string; url?: string }>;
