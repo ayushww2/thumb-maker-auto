@@ -466,10 +466,31 @@ Return tight bullets, no intro.`,
 const SPACE_COMP_TEXT_LOCK = [
   "SPACE TEXT LOCK (mandatory — look like real competitor space thumbs, not AI text):",
   "Copy the REFERENCE text STYLE heavily: same placement zone, same casing energy, same weight, same fill color family (usually thick white or yellow ALL-CAPS), same hard black outline/shadow.",
-  "Text must look printed/composited on a real YouTube thumbnail — clean bold sans, crisp edges, slight natural compression — NOT glowing neon, NOT metallic 3D chrome, NOT bubbly AI letters, NOT soft plastic type.",
-  "Keep punch lines SHORT like the comps: 2-5 blunt words (THIS IS JUPITER / WHAT NASA SAW / NASA'S PLAN / NOTHING). No long sentences.",
+  "Text must look printed/composited on a real YouTube thumbnail — clean bold geometric sans, perfectly crisp edges, slight natural compression — NOT glowing neon, NOT metallic 3D chrome, NOT bubbly AI letters, NOT soft plastic type, NOT warped glyphs.",
+  "Keep punch lines SHORT like the comps: 2-5 blunt words (THIS IS JUPITER / WHAT NASA SAW / NASA'S PLAN / NOTHING). No long sentences. No tiny captions.",
+  "Letters must stay upright, evenly spaced, and razor-sharp at phone size — text is the #1 readability priority.",
   "Do not invent fancy fonts; match the reference's simple high-contrast youtube-thumb typography.",
 ].join(" ");
+
+/** Normalize overlay to short blunt ALL-CAPS like real space comps. */
+function normalizeSpaceOverlayText(raw: string, title: string): string {
+  const cleaned = raw
+    .replace(/["'`]/g, "")
+    .replace(/[^a-zA-Z0-9\s']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+  const words = cleaned.split(" ").filter(Boolean).slice(0, 5);
+  if (words.length >= 2) return words.join(" ");
+  const fromTitle = title
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" ")
+    .toUpperCase();
+  return fromTitle || "THIS IS SPACE";
+}
 
 const SPACE_COMP_FIDELITY_LOCK = [
   "COMP FIDELITY LOCK (mandatory):",
@@ -608,6 +629,11 @@ Produce JSON now.`,
     };
   }
 
+  parsed.overlayText = normalizeSpaceOverlayText(
+    parsed.overlayText || "",
+    title,
+  );
+
   const imagePrompt = [
     "Using the uploaded Space competitor thumbnail as a HEAVY STYLE + LAYOUT REFERENCE, create a brand-new original 16:9 YouTube thumbnail that still feels like the same channel package.",
     "Preserve composition grammar, subject scale, text zone, border/frame, and marker language from the reference as closely as possible.",
@@ -616,7 +642,7 @@ Produce JSON now.`,
     "Output must be 16:9 (1280x720).",
     parsed.imagePrompt.trim(),
     parsed.overlayText
-      ? `On-image text exactly: ${parsed.overlayText.trim()} — render it like real competitor Space thumbs: clean thick sans ALL-CAPS, hard outline/shadow, no AI glow/chrome/bubble type.`
+      ? `On-image text exactly: "${parsed.overlayText}" — render ONLY these words as thick geometric ALL-CAPS sans with hard black outline, white or yellow fill, razor-sharp edges, even spacing; look like a real YouTube space thumb (THIS IS JUPITER / WHAT NASA SAW style). Zero AI glow/chrome/bubble/warp.`
       : "",
     parsed.discoveryPlan
       ? `Discovery subject for this title (keep reference lighting/scale language): ${parsed.discoveryPlan.trim()}`
@@ -635,7 +661,7 @@ Produce JSON now.`,
     "Clone the reference package grammar: big subject, sparse black space, short blunt headline, optional border/markers.",
     "Documentary / archival / NASA-footage realism — not generic glossy sci-fi CGI.",
     parsed.overlayText
-      ? `Text (real youtube-comp typography, 2-5 blunt caps): ${parsed.overlayText}`
+      ? `Text (exact words, real youtube-comp typography, 2-5 blunt caps, razor sharp): "${parsed.overlayText}"`
       : "",
     parsed.discoveryPlan
       ? `Discovery: ${parsed.discoveryPlan}`
