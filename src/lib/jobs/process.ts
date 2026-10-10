@@ -75,7 +75,7 @@ export async function processJob(jobId: string): Promise<void> {
             : job.agentType === "clay"
               ? "Clay Thumb Agent starting…"
               : job.agentType === "crown"
-                ? "Crown Watch Agent starting…"
+                ? "Royal starting…"
                 : "Mystery Thumb Agent starting…",
         startedAt: job.startedAt ?? new Date(),
         error: null,
@@ -93,7 +93,7 @@ export async function processJob(jobId: string): Promise<void> {
                 : job.agentType === "clay"
                   ? "Clay Agent · still working (streaming high-quality render)…"
                   : job.agentType === "crown"
-                    ? "Crown Watch · still working (streaming high-quality render)…"
+                    ? "Royal · still working (streaming high-quality render)…"
                     : "Mystery Agent · still working (streaming high-quality render)…",
           },
         })
@@ -142,7 +142,7 @@ export async function processJob(jobId: string): Promise<void> {
           } else if (job.useAgent && job.agentType === "crown") {
             await setProgress(
               jobId,
-              "Crown Watch · matching top channel thumbs + CTR text…",
+              "Royal · matching top channel thumbs + CTR text…",
             );
             const result = await generateWithCrownAgent({
               title: job.title,
@@ -150,7 +150,7 @@ export async function processJob(jobId: string): Promise<void> {
             });
             await setProgress(
               jobId,
-              `Crown render 16:9 · ${result.brief.overlayText || "BREAKING NEWS"}`,
+              `Royal render 16:9 · ${result.brief.overlayText || "BREAKING NEWS"}`,
             );
             prompt = result.brief.generatePrompt || result.brief.imagePrompt;
             analysis = result.brief.analysis;

@@ -115,7 +115,7 @@ export default function Home() {
         </p>
         <p className="anim-rise-delay mt-3 text-sm font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
           {agentType === "crown"
-            ? "Crown Watch Agent"
+            ? "Royal"
             : agentType === "space"
               ? "Space Thumb Agent"
               : agentType === "clay"
@@ -124,7 +124,7 @@ export default function Home() {
         </p>
         <p className="anim-rise-delay mt-4 max-w-2xl text-base text-[var(--muted)] sm:text-lg">
           {agentType === "crown"
-            ? "Crown Watch thumbs are trained on the channel’s top 150 videos — red BREAKING NEWS tab plus a short high-CTR quote banner."
+            ? "Royal thumbs are trained on the channel’s top 150 videos — red BREAKING NEWS tab plus a short high-CTR quote banner."
             : agentType === "space"
               ? "Space thumbs are trained only on Space competitor titles + thumbs (≥100K views)."
               : agentType === "clay"
@@ -151,7 +151,7 @@ export default function Home() {
                   : "border-[var(--line)] text-[var(--muted)]"
               }`}
             >
-              Crown Watch
+              Royal
             </button>
             <button
               type="button"

@@ -118,7 +118,7 @@ export async function POST(req: Request) {
         : agentType === "clay"
           ? "Queued — waiting for Clay Thumb Agent…"
           : agentType === "crown"
-            ? "Queued — waiting for Crown Watch Agent…"
+            ? "Queued — waiting for Royal…"
             : "Queued — waiting for Mystery Thumb Agent…";
 
     const jobs = await prisma.$transaction(

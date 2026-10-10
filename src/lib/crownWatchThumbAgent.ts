@@ -73,7 +73,7 @@ export type CrownAgentResult = {
 };
 
 const CROWN_TEXT_LOCK = [
-  "CROWN WATCH TEXT LOCK (mandatory — match @crownwatchnews CTR package):",
+  "ROYAL TEXT LOCK (mandatory — match the trained royal CTR package):",
   "Bottom-left: a solid RED rectangle tab that reads exactly BREAKING NEWS in white bold condensed ALL-CAPS.",
   "Immediately to its right and across the bottom: a solid WHITE banner with thick black condensed sans ALL-CAPS.",
   "Banner copy is SHORT (4-8 words), emotional, and usually a quoted outburst or accusation.",
@@ -83,7 +83,7 @@ const CROWN_TEXT_LOCK = [
 ].join(" ");
 
 const CROWN_LAYOUT_LOCK = [
-  "CROWN WATCH LAYOUT LOCK:",
+  "ROYAL LAYOUT LOCK:",
   "Photoreal press / paparazzi stills only — real royal and celebrity faces, not illustrated or CGI.",
   "Prefer a vertical split: shocked or speaking face on the left, the scandal scene on the right. A single tight two-shot is also valid when the reference is a single frame.",
   "Faces are large and recognizable. Optional small inset photo with a thin red frame.",
@@ -246,7 +246,7 @@ async function scanThumb(input: {
   > = [
     {
       type: "text",
-      text: `You are studying a Crown Watch News YouTube thumbnail (royal gossip / breaking-news package).
+      text: `You are studying a Royal YouTube thumbnail (royal gossip / breaking-news package).
 Title: ${input.title}
 Views: ${input.viewCount}
 
@@ -328,7 +328,7 @@ export async function buildCrownPlaybook(force = false): Promise<CrownPlaybook> 
 
   const videos = await loadCrownVideos();
   if (!videos.length) {
-    throw new Error("No Crown Watch videos found. Run crown:seed first.");
+    throw new Error("No Royal videos found. Run crown:seed first.");
   }
 
   const visualLessons: CrownPlaybook["visualLessons"] = [];
@@ -369,7 +369,7 @@ export async function buildCrownPlaybook(force = false): Promise<CrownPlaybook> 
     messages: [
       {
         role: "system",
-        content: `You train a thumbnail model ONLY on Crown Watch News (@crownwatchnews) top videos.
+        content: `You train the Royal thumbnail model ONLY on this channel’s top royal-gossip videos.
 The winning package is: photoreal royal/celebrity split or two-shot, red BREAKING NEWS tab, white banner with a short black ALL-CAPS quote.
 Pick banner lines that match the highest-view thumbs, not the long YouTube titles.
 Return STRICT JSON only:
@@ -385,7 +385,7 @@ Return STRICT JSON only:
       },
       {
         role: "user",
-        content: `Collection: ${videos.length} top Crown Watch videos.
+        content: `Collection: ${videos.length} top Royal videos.
 
 TOP TITLES:
 ${titleLines}
@@ -431,7 +431,7 @@ Build the playbook JSON now.`,
 
 export async function pickCrownFormatReference(title: string) {
   const videos = await loadCrownVideos();
-  if (!videos.length) throw new Error("No Crown Watch format references in DB");
+  if (!videos.length) throw new Error("No Royal format references in DB");
   const scored = videos.map((v) => {
     const score = scoreCompetitor({
       query: title,
@@ -468,7 +468,7 @@ export async function pickCrownFormatReference(title: string) {
 async function layoutBlueprint(thumbnailUrl: string) {
   const visionUrl = await resolveVisionImageUrl(thumbnailUrl);
   const fallback = [
-    "16:9 Crown Watch package",
+    "16:9 Royal package",
     "Large photoreal faces, often a vertical split",
     "Red BREAKING NEWS tab bottom-left",
     "White banner with short black ALL-CAPS quote",
@@ -484,7 +484,7 @@ async function layoutBlueprint(thumbnailUrl: string) {
           content: [
             {
               type: "text",
-              text: "Extract a tight layout blueprint of this Crown Watch thumbnail: zones, split or single, BREAKING NEWS placement, exact banner text style. Bullets only.",
+              text: "Extract a tight layout blueprint of this Royal thumbnail: zones, split or single, BREAKING NEWS placement, exact banner text style. Bullets only.",
             },
             { type: "image_url", image_url: { url: visionUrl } },
           ] as never,
@@ -519,8 +519,8 @@ export async function runCrownWatchAgent(input: {
       messages: [
         {
           role: "system",
-          content: `You are Crown Watch Thumb Agent.
-Copy the @crownwatchnews package: photoreal split/two-shot, red BREAKING NEWS tab, white banner, short quoted ALL-CAPS punch line.
+          content: `You are the Royal thumb agent.
+Copy the trained royal package: photoreal split/two-shot, red BREAKING NEWS tab, white banner, short quoted ALL-CAPS punch line.
 The banner is NOT the YouTube title. It is a 4-8 word emotional quote that would win the click.
 ${CROWN_TEXT_LOCK}
 Return STRICT JSON only:
@@ -567,7 +567,7 @@ Produce JSON now.`,
     parsed = extractJson(content);
   } catch {
     parsed = {
-      analysis: "Fallback — keep Crown Watch breaking-news package.",
+      analysis: "Fallback — keep the Royal breaking-news package.",
       chosenFormat: "split-scandal",
       overlayText: "SHE JUST BROKE DOWN",
       discoveryPlan: `Photoreal press stills of the people named in: ${title}`,
@@ -579,7 +579,7 @@ Produce JSON now.`,
   parsed.overlayText = normalizeCrownOverlay(parsed.overlayText || "", title);
 
   const imagePrompt = [
-    "Using the uploaded Crown Watch thumbnail as the LAYOUT REFERENCE, make a new 16:9 YouTube thumbnail in the exact same package.",
+    "Using the uploaded Royal thumbnail as the LAYOUT REFERENCE, make a new 16:9 YouTube thumbnail in the exact same package.",
     CROWN_LAYOUT_LOCK,
     CROWN_TEXT_LOCK,
     `Sell ONLY this title: ${title}`,
@@ -595,7 +595,7 @@ Produce JSON now.`,
     .join(" ");
 
   const generatePrompt = [
-    "Photoreal 16:9 Crown Watch News YouTube thumbnail.",
+    "Photoreal 16:9 Royal YouTube thumbnail.",
     CROWN_LAYOUT_LOCK,
     CROWN_TEXT_LOCK,
     `Title to sell: ${title}`,
