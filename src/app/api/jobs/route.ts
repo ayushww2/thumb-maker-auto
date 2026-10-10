@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       titles?: string[] | string;
       notes?: string;
       useAgent?: boolean;
-      agentType?: "mystery" | "clay" | "space";
+      agentType?: "mystery" | "clay" | "space" | "crown";
     };
 
     const titles = parseTitles(body);
@@ -107,7 +107,9 @@ export async function POST(req: Request) {
         ? "space"
         : body.agentType === "clay"
           ? "clay"
-          : "mystery";
+          : body.agentType === "crown"
+            ? "crown"
+            : "mystery";
     const notes = body.notes?.trim() || null;
     const useAgent = body.useAgent !== false;
     const progress =
@@ -115,7 +117,9 @@ export async function POST(req: Request) {
         ? "Queued — waiting for Space Thumb Agent…"
         : agentType === "clay"
           ? "Queued — waiting for Clay Thumb Agent…"
-          : "Queued — waiting for Mystery Thumb Agent…";
+          : agentType === "crown"
+            ? "Queued — waiting for Crown Watch Agent…"
+            : "Queued — waiting for Mystery Thumb Agent…";
 
     const jobs = await prisma.$transaction(
       titles.map((title) =>
