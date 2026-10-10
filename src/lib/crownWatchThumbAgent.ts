@@ -217,20 +217,44 @@ function clickVisualScore(composition: string, overlay: string): number {
   return score;
 }
 
-function clickbaitFromTitle(title: string): string {
+function subjectAndTarget(title: string): { subject: string; target: string } {
   const names = namesIn(title);
-  const a = names[0] || "CAMILLA";
-  const b = names.find((name) => name !== a) || (a === "CAMILLA" ? "WILLIAM" : "CAMILLA");
+  const about = title
+    .toUpperCase()
+    .match(/\bABOUT\s+(KATE|CATHERINE|CAMILLA|WILLIAM|CHARLES|HARRY|MEGHAN|ANNE|DIANA)\b/);
+  const named = about?.[1] === "KATE" ? "CATHERINE" : about?.[1];
+  const target = named || names[names.length - 1] || "CAMILLA";
+  const subject = names.find((name) => name !== target) || (target === "WILLIAM" ? "CAMILLA" : "WILLIAM");
+  return { subject, target };
+}
+
+function titleHasExpulsion(title: string): boolean {
+  return /\b(OUT|BAN\w*|KICK\w*|BAR\w*|LEAV\w*|FLEE\w*|EXPEL\w*|ORDER\w*)\b/.test(title.toUpperCase());
+}
+
+function clickbaitFromTitle(title: string): string {
+  const { subject, target } = subjectAndTarget(title);
   const upper = title.toUpperCase();
-  if (/CROWN|THRONE|QUEEN/.test(upper)) return `${a} GETS THE CROWN!`;
-  if (/HATE|FURIOUS|SLAM|BULLY/.test(upper)) return `THE REASON ${b} HATES ${a}!`;
-  if (/HID|SECRET|LETTER|LEAK|REPORT/.test(upper)) return `${a} BEEN HIDING THIS FOR YEARS!`;
-  if (/OUT|BAN|ORDER|KICK|BAR|LEAVE|FLEE|EXPEL/.test(upper)) return `${a} LEAVES FOREVER!`;
-  if (/BROKE|CRY|DEVASTAT|COLLAPS|TEAR/.test(upper)) return `${a} JUST BROKE DOWN!`;
-  if (/RUIN|SOLD|MONEY|MANSION/.test(upper)) return `${a} RUINED EVERYTHING!`;
-  if (/MESSAGE|SHARE|UPDATE|ANNOUNCE/.test(upper)) return `${b} EXPOSED ${a}!`;
-  if (names.length >= 2) return `DON'T YOU TOUCH ${a}!`;
-  return `${a} JUST BROKE DOWN!`;
+  if (/CROWN|THRONE|QUEEN/.test(upper)) return `${target} GETS THE CROWN!`;
+  if (/HATE|FURIOUS|SLAM|BULLY/.test(upper)) return `THE REASON ${subject} HATES ${target}!`;
+  if (/\b(HID\w*|SECRET\w*|LETTER|LEAK\w*|REPORT)\b/.test(upper)) {
+    return `${target} BEEN HIDING THIS FOR YEARS!`;
+  }
+  if (titleHasExpulsion(title)) return `${target} LEAVES FOREVER!`;
+  if (/BROKE|CRY|DEVASTAT|COLLAPS|TEAR/.test(upper)) return `${target} JUST BROKE DOWN!`;
+  if (/RUIN|SOLD|MONEY|MANSION/.test(upper)) return `${target} RUINED EVERYTHING!`;
+  if (/MESSAGE|SHARE|UPDATE|ANNOUNCE/.test(upper)) return `${subject} EXPOSED ${target}!`;
+  if (namesIn(title).length >= 2) return `DON'T YOU TOUCH ${target}!`;
+  return `${target} JUST BROKE DOWN!`;
+}
+
+function lineFitsTitle(line: string, title: string): boolean {
+  const titleNames = namesIn(title);
+  const lineNames = namesIn(line);
+  if (titleNames.length && !lineNames.some((name) => titleNames.includes(name))) return false;
+  const expulsion = /\b(LEAVES|FOREVER|KICK|BAN|EXPEL)\b/.test(line.toUpperCase());
+  if (expulsion && !titleHasExpulsion(title)) return false;
+  return true;
 }
 
 function normalizeCrownOverlay(raw: string, title: string): string {
@@ -242,7 +266,7 @@ function normalizeCrownOverlay(raw: string, title: string): string {
     .filter(Boolean)
     .slice(0, 8);
   let line = words.join(" ").toUpperCase();
-  if (!isHighCtrLine(line)) line = clickbaitFromTitle(title);
+  if (!isHighCtrLine(line) || !lineFitsTitle(line, title)) line = clickbaitFromTitle(title);
   if (!line.endsWith("!")) line = `${line.replace(/!+$/, "")}!`;
   return `"${line}"`;
 }
@@ -685,7 +709,7 @@ export async function runCrownWatchAgent(input: {
           role: "system",
           content: `You are the Royal thumb agent. You have studied many high-view royal thumbs, not one photo.
 Steal the CLICK from the whole set: split-screen fury, red arrow, BREAKING NEWS, a short vicious quote.
-The banner is NOT the YouTube title and it is NOT a soft feeling. Name someone and hit them.
+The banner is NOT the YouTube title and it is NOT a soft feeling. Name someone from the title and hit them with the SAME event: a devastating message is a breakdown or an exposure, not an exit. Say LEAVES only when the title kicks someone out.
 ${CROWN_LAYOUT_LOCK}
 ${CROWN_TEXT_LOCK}
 Return STRICT JSON only:
