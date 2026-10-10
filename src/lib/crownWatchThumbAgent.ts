@@ -12,7 +12,6 @@ import {
 import { getR2Config, getReasoningModel } from "@/lib/env";
 import { toYouTube16x9 } from "@/lib/imageSize";
 import { scoreCompetitor } from "@/lib/textSimilarity";
-import { THUMB_RENDER_QUALITY } from "@/lib/thumbRenderQuality";
 
 export const CROWN_NICHE = "crown-watch";
 export const CROWN_MIN_VIEWS = 1;
@@ -72,22 +71,107 @@ export type CrownAgentResult = {
   whyTheseComps: string;
 };
 
+const PROVEN_CTR = [
+  "WE HAD TO MAKE THIS HARD DECISION!",
+  "PRINCESS ANNE JUST BROKE DOWN",
+  "MEGHAN RUINED MY DAMN LIFE!",
+  "SHE MADE DIANA'S LIFE MISERABLE",
+  "SHE BEEN HIDING THESE FOR YEARS",
+  "THE REASON WILLIAM HATES CAMILLA!",
+  "I WARNED CHARLES FOR YEARS!",
+  "CATHERINE GETS THE CROWN!",
+  "CHARLES HAS CHOSEN TO STEP ASIDE!",
+  "YOU'VE GONE TOO FAR HARRY!",
+  "CAMILLA LEAVES WINDSOR FOREVER!",
+  "THAT IS ENOUGH CAMILLA!",
+  "DON'T YOU TOUCH CATHERINE!",
+  "WILLIAM REVEALS IT ALL TO CHARLES",
+];
+
+const ROYAL_NAMES = [
+  "WILLIAM",
+  "KATE",
+  "CATHERINE",
+  "CAMILLA",
+  "CHARLES",
+  "HARRY",
+  "MEGHAN",
+  "ANNE",
+  "DIANA",
+  "OPRAH",
+  "SPENCER",
+];
+
+const SHOCK_BITS = [
+  "HATE",
+  "RUIN",
+  "OUT",
+  "BAN",
+  "CROWN",
+  "BROKE",
+  "CRIED",
+  "CRY",
+  "LIED",
+  "SECRET",
+  "EXPOS",
+  "GONE",
+  "ENOUGH",
+  "FOREVER",
+  "TOUCH",
+  "HIDING",
+  "STEP",
+  "LEAVE",
+  "LEAVES",
+  "MISERABLE",
+  "DAMN",
+  "SHOCK",
+  "KICK",
+  "SOLD",
+  "FLEE",
+  "PLACE",
+  "ORDER",
+  "WARN",
+  "REVEAL",
+  "FAR",
+  "TEAR",
+  "PUSH",
+  "REPORT",
+  "FREEZE",
+  "EXPEL",
+  "EXPOSE",
+];
+
+const SOFT_BITS = [
+  "SHARE",
+  "MESSAGE",
+  "UPDATE",
+  "BEAUTIFUL",
+  "TOGETHER",
+  "SO HARD",
+  "HEARTFELT",
+  "EMOTIONAL JOURNEY",
+  "LOVE",
+  "BLESSED",
+];
+
 const CROWN_TEXT_LOCK = [
-  "ROYAL TEXT LOCK (mandatory — match the trained royal CTR package):",
-  "Bottom-left: a solid RED rectangle tab that reads exactly BREAKING NEWS in white bold condensed ALL-CAPS.",
-  "Immediately to its right and across the bottom: a solid WHITE banner with thick black condensed sans ALL-CAPS.",
-  "Banner copy is SHORT (4-8 words), emotional, and usually a quoted outburst or accusation.",
-  "Proven high-CTR shapes from this channel's top videos: \"WE HAD TO MAKE THIS HARD DECISION!\" · \"PRINCESS ANNE JUST BROKE DOWN\" · MEGHAN RUINED MY DAMN LIFE! · \"SHE BEEN HIDING THESE FOR YEARS\" · \"CATHERINE GETS THE CROWN!\"",
-  "Write a NEW line in that grammar for THIS title. Do not paste the YouTube title onto the banner.",
-  "Letters must be razor-sharp, even, upright, high contrast. No glow, chrome, bubble, script, or warped glyphs.",
+  "ROYAL CTR TEXT (mandatory — this is what the top thumbs actually say):",
+  "Red tab, bottom-left, exact words BREAKING NEWS in white bold condensed caps.",
+  "White banner across the bottom, huge black condensed ALL-CAPS, 4-7 words, ends with !",
+  "The line must NAME a person and land a blow: accusation, expulsion, breakdown, secret, or crown taken.",
+  "Copy the grammar of the winners, then write a NEW line for this title:",
+  PROVEN_CTR.join(" · "),
+  "BANNED soft lines: sharing a message, this was hard, an update, a beautiful moment, the full YouTube title.",
+  "Letters razor-sharp, even, upright. No glow, chrome, script, or warped glyphs.",
 ].join(" ");
 
 const CROWN_LAYOUT_LOCK = [
-  "ROYAL LAYOUT LOCK:",
-  "Photoreal press / paparazzi stills only — real royal and celebrity faces, not illustrated or CGI.",
-  "Prefer a vertical split: shocked or speaking face on the left, the scandal scene on the right. A single tight two-shot is also valid when the reference is a single frame.",
-  "Faces are large and recognizable. Optional small inset photo with a thin red frame.",
-  "Keep the BREAKING NEWS + white banner glued to the bottom edge. No YouTube UI, no channel watermark, no extra logos.",
+  "ROYAL CLICKBAIT VISUAL (mandatory — mix devices from MANY winning thumbs, do not clone one polite photo):",
+  "Vertical SPLIT. Left 50%: huge paparazzi close-up, mouth open or eyes wet or a hard glare, face fills the panel.",
+  "Right 50%: the target caught — palace steps, yacht, letter, car, crowd, or the person being pointed at.",
+  "Add a thick RED ARROW or RED CIRCLE on the villain or the evidence. Optional tiny red-border inset photo.",
+  "Bottom edge: red BREAKING NEWS tab + the white quote banner. Nothing else. No collage, no grid, no watermark, no YouTube UI.",
+  "Real recognizable royal faces, harsh press flash, high contrast. Not a soft official portrait, not CGI, not illustration.",
 ].join(" ");
 
 function extractJson<T>(text: string): T {
@@ -102,6 +186,53 @@ function extractJson<T>(text: string): T {
   return JSON.parse(raw.slice(start, end + 1)) as T;
 }
 
+function namesIn(text: string): string[] {
+  const upper = text.toUpperCase();
+  const found = ROYAL_NAMES.filter((name) => upper.includes(name));
+  return [...new Set(found.map((name) => (name === "KATE" ? "CATHERINE" : name)))];
+}
+
+function isHighCtrLine(line: string): boolean {
+  const upper = line.toUpperCase();
+  if (SOFT_BITS.some((bit) => upper.includes(bit))) return false;
+  const words = upper.split(/\s+/).filter(Boolean);
+  if (words.length < 3 || words.length > 8) return false;
+  const hasName = namesIn(upper).length > 0;
+  const hasShock = SHOCK_BITS.some((bit) => upper.includes(bit));
+  return hasName && hasShock;
+}
+
+function clickVisualScore(composition: string, overlay: string): number {
+  const blob = `${composition}\n${overlay}`.toUpperCase();
+  let score = 0;
+  if (/\bSPLIT\b/.test(blob)) score += 4;
+  if (/ARROW/.test(blob)) score += 4;
+  if (/INSET|RED-BORDER|RED BORDER|FRAMED/.test(blob)) score += 2;
+  if (/CRY|TEAR|ANGR|FURY|SHOUT|DISTRESS/.test(blob)) score += 2;
+  if (/SINGLE IMAGE|TWO-PERSON PORTRAIT|BOTH FACING/.test(blob) && !/\bSPLIT\b/.test(blob)) {
+    score -= 6;
+  }
+  const quote = overlay.replace(/BREAKING NEWS/gi, " ").replace(/[“”"]/g, "").trim();
+  if (isHighCtrLine(quote)) score += 2;
+  return score;
+}
+
+function clickbaitFromTitle(title: string): string {
+  const names = namesIn(title);
+  const a = names[0] || "CAMILLA";
+  const b = names.find((name) => name !== a) || (a === "CAMILLA" ? "WILLIAM" : "CAMILLA");
+  const upper = title.toUpperCase();
+  if (/CROWN|THRONE|QUEEN/.test(upper)) return `${a} GETS THE CROWN!`;
+  if (/HATE|FURIOUS|SLAM|BULLY/.test(upper)) return `THE REASON ${b} HATES ${a}!`;
+  if (/HID|SECRET|LETTER|LEAK|REPORT/.test(upper)) return `${a} BEEN HIDING THIS FOR YEARS!`;
+  if (/OUT|BAN|ORDER|KICK|BAR|LEAVE|FLEE|EXPEL/.test(upper)) return `${a} LEAVES FOREVER!`;
+  if (/BROKE|CRY|DEVASTAT|COLLAPS|TEAR/.test(upper)) return `${a} JUST BROKE DOWN!`;
+  if (/RUIN|SOLD|MONEY|MANSION/.test(upper)) return `${a} RUINED EVERYTHING!`;
+  if (/MESSAGE|SHARE|UPDATE|ANNOUNCE/.test(upper)) return `${b} EXPOSED ${a}!`;
+  if (names.length >= 2) return `DON'T YOU TOUCH ${a}!`;
+  return `${a} JUST BROKE DOWN!`;
+}
+
 function normalizeCrownOverlay(raw: string, title: string): string {
   let text = raw.replace(/\s+/g, " ").trim();
   text = text.replace(/^["“”']+|["“”']+$/g, "");
@@ -111,18 +242,9 @@ function normalizeCrownOverlay(raw: string, title: string): string {
     .filter(Boolean)
     .slice(0, 8);
   let line = words.join(" ").toUpperCase();
-  if (words.length < 3) {
-    const fromTitle = title
-      .replace(/[^a-zA-Z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2)
-      .slice(0, 6)
-      .join(" ")
-      .toUpperCase();
-    line = fromTitle || "SHE JUST BROKE DOWN";
-  }
-  if (!/[!]$/.test(line) && line.split(" ").length <= 6) line = `${line}!`;
-  return `"${line.replace(/!+$/, "!")}"`;
+  if (!isHighCtrLine(line)) line = clickbaitFromTitle(title);
+  if (!line.endsWith("!")) line = `${line.replace(/!+$/, "")}!`;
+  return `"${line}"`;
 }
 
 async function loadCrownVideos() {
@@ -438,6 +560,9 @@ export async function pickCrownFormatReference(title: string) {
       title: v.title,
       viewCount: v.viewCount,
     });
+    const overlayText = (v.thumbScan?.overlayText || "").replace(/\s+/g, " ").trim();
+    const composition = (v.thumbScan?.composition || "").replace(/\s+/g, " ").trim();
+    const clickScore = clickVisualScore(composition, overlayText);
     return {
       youtubeId: v.youtubeId,
       title: v.title,
@@ -445,24 +570,48 @@ export async function pickCrownFormatReference(title: string) {
       thumbnailUrl: v.r2ThumbnailUrl || v.thumbnailUrl,
       videoUrl: v.videoUrl,
       channelName: v.channel.name,
+      overlayText,
+      composition,
       score,
+      clickScore,
       fitness:
-        score * 0.55 +
-        Math.min(0.45, Math.log10(v.viewCount + 1) / 12) +
-        (v.r2ThumbnailUrl ? 0.08 : 0),
+        score * 0.25 +
+        Math.min(0.35, Math.log10(v.viewCount + 1) / 14) +
+        clickScore * 0.08 +
+        (overlayText ? 0.08 : 0),
     };
   });
   scored.sort((a, b) => b.fitness - a.fitness || b.viewCount - a.viewCount);
 
-  let reference = { ...scored[0], isFormatReference: true };
-  for (const candidate of scored.slice(0, 8)) {
+  // Every scanned winner, plus the closest title matches, so the brief is not one photo.
+  const scanned = scored.filter((item) => item.overlayText);
+  const board = [...scanned, ...scored.slice(0, 8)]
+    .filter(
+      (item, index, all) =>
+        all.findIndex((other) => other.youtubeId === item.youtubeId) === index,
+    )
+    .slice(0, 18);
+  const moreTitles = scored
+    .slice()
+    .sort((a, b) => b.viewCount - a.viewCount)
+    .slice(0, 30)
+    .map((item) => `${Math.round(item.viewCount / 1000)}K — ${item.title}`);
+
+  const clickbaitFirst = [...scored].sort(
+    (a, b) => b.clickScore - a.clickScore || b.viewCount - a.viewCount,
+  );
+  let reference = { ...clickbaitFirst[0], isFormatReference: true as const };
+  for (const candidate of clickbaitFirst.filter((item) => item.clickScore >= 4).slice(0, 6)) {
     if (await canFetchReferenceImage(candidate.thumbnailUrl)) {
-      reference = { ...candidate, isFormatReference: true };
+      reference = { ...candidate, isFormatReference: true as const };
       break;
     }
   }
-  const shortlist = scored.slice(0, 5).map(({ fitness: _f, ...rest }) => rest);
-  return { reference, shortlist };
+  const shortlist = clickbaitFirst.slice(0, 8).map((item) => {
+    const { fitness: _fitness, ...rest } = item;
+    return rest;
+  });
+  return { reference, shortlist, board, moreTitles };
 }
 
 async function layoutBlueprint(thumbnailUrl: string) {
@@ -509,28 +658,44 @@ export async function runCrownWatchAgent(input: {
     pickCrownFormatReference(title),
   ]);
   const blueprint = await layoutBlueprint(picked.reference.thumbnailUrl);
-  const ctrExamples = (playbook.ctrTexts || []).slice(0, 8).join(" · ");
+  const ctrExamples = [
+    ...PROVEN_CTR,
+    ...(playbook.ctrTexts || []),
+    ...picked.board.map((item) => item.overlayText).filter(Boolean),
+  ]
+    .filter((line, index, all) => all.indexOf(line) === index)
+    .slice(0, 18)
+    .join(" · ");
+  const thumbBoard = picked.board
+    .map(
+      (item, index) =>
+        `${index + 1}. ${item.viewCount.toLocaleString()} views — ${item.title}
+   banner: ${item.overlayText || "(same BREAKING NEWS + quote package)"}
+   visual: ${item.composition || "split close-up + scandal scene, red arrow on the target"}`,
+    )
+    .join("\n");
 
   let content = "";
   try {
     const completion = await createReasoningCompletion({
-      temperature: 0.45,
+      temperature: 0.55,
       max_tokens: 900,
       messages: [
         {
           role: "system",
-          content: `You are the Royal thumb agent.
-Copy the trained royal package: photoreal split/two-shot, red BREAKING NEWS tab, white banner, short quoted ALL-CAPS punch line.
-The banner is NOT the YouTube title. It is a 4-8 word emotional quote that would win the click.
+          content: `You are the Royal thumb agent. You have studied many high-view royal thumbs, not one photo.
+Steal the CLICK from the whole set: split-screen fury, red arrow, BREAKING NEWS, a short vicious quote.
+The banner is NOT the YouTube title and it is NOT a soft feeling. Name someone and hit them.
+${CROWN_LAYOUT_LOCK}
 ${CROWN_TEXT_LOCK}
 Return STRICT JSON only:
 {
-  "analysis": "why this format fits",
-  "chosenFormat": "split-scandal | two-shot announcement | inset reaction",
-  "overlayText": "short ALL-CAPS banner quote in quotes",
-  "discoveryPlan": "who is on the left, who/what is on the right, photoreal",
-  "imagePrompt": "edit instruction preserving BREAKING NEWS + white banner",
-  "whyTheseComps": "why this reference"
+  "analysis": "which of the listed thumbs you are mixing and why",
+  "chosenFormat": "split + red arrow | split + inset | two-shot accusation",
+  "overlayText": "4-7 word ALL-CAPS quote that names a person and a blow",
+  "discoveryPlan": "LEFT face (emotion) and RIGHT target (scene). Name both people.",
+  "imagePrompt": "one-thumbnail edit: split, red arrow, BREAKING NEWS, exact banner",
+  "whyTheseComps": "which winning banners you matched"
 }`,
         },
         {
@@ -538,15 +703,20 @@ Return STRICT JSON only:
           content: `NEW TITLE: ${title}
 ${input.notes?.trim() ? `EXTRA: ${input.notes.trim()}` : ""}
 
-FORMAT REFERENCE (${picked.reference.viewCount} views): ${picked.reference.title}
+SCANNED WINNERS TO MIX (banner + visual). Do not copy just one photo:
+${thumbBoard}
 
-BLUEPRINT:
+MORE HIGH-VIEW THUMBS FROM THE SAME CHANNEL (same click package):
+${picked.moreTitles.join("\n")}
+
+LAYOUT STILL WE WILL EDIT (${picked.reference.viewCount.toLocaleString()} views, clickbait layout): ${picked.reference.title}
+banner: ${picked.reference.overlayText || "BREAKING NEWS + vicious quote"}
 ${blueprint}
 
-PLAYBOOK: ${playbook.summary}
-CTR LINES THAT WON: ${ctrExamples || "WE HAD TO MAKE THIS HARD DECISION · PRINCESS ANNE JUST BROKE DOWN · CATHERINE GETS THE CROWN"}
+CTR LINES THAT GOT THE VIEWS:
+${ctrExamples}
 
-Produce JSON now.`,
+Produce JSON now. The overlay must name a person and land a blow. Reject sympathy, sharing, and message lines.`,
         },
       ],
     });
@@ -578,31 +748,27 @@ Produce JSON now.`,
   }
   parsed.overlayText = normalizeCrownOverlay(parsed.overlayText || "", title);
 
+  const faces = parsed.discoveryPlan.replace(/\s+/g, " ").trim().slice(0, 280);
   const imagePrompt = [
-    "Using the uploaded Royal thumbnail as the LAYOUT REFERENCE, make a new 16:9 YouTube thumbnail in the exact same package.",
-    CROWN_LAYOUT_LOCK,
-    CROWN_TEXT_LOCK,
-    `Sell ONLY this title: ${title}`,
-    `Banner text exactly: ${parsed.overlayText}`,
-    "Also render a red tab that says BREAKING NEWS in white.",
-    parsed.discoveryPlan,
-    parsed.imagePrompt,
-    blueprint,
-    THUMB_RENDER_QUALITY,
-    "Output 16:9 1280x720. No watermark. No YouTube UI.",
+    "EDIT this thumbnail. Keep the clickbait layout devices only. Replace every face, scene, and banner word.",
+    "ONE 16:9 image, not a collage and not a grid.",
+    "Vertical split. Left half: huge paparazzi close-up, mouth open or eyes wet or a hard glare, face fills the panel.",
+    "Right half: the target caught at a palace, yacht, car, letter, or crowd. Thick RED ARROW pointing at them.",
+    "Bottom-left red tab, white condensed caps, exact words: BREAKING NEWS",
+    `White banner, huge black condensed ALL-CAPS, exact text and no other words: ${parsed.overlayText}`,
+    faces,
+    "Harsh press flash, high contrast, real recognizable royal faces. Not a soft official portrait. No watermark. No YouTube UI. 1280x720.",
   ]
     .filter(Boolean)
     .join(" ");
 
   const generatePrompt = [
-    "Photoreal 16:9 Royal YouTube thumbnail.",
-    CROWN_LAYOUT_LOCK,
-    CROWN_TEXT_LOCK,
-    `Title to sell: ${title}`,
-    `Banner text exactly: ${parsed.overlayText}`,
-    "Red BREAKING NEWS tab, bottom left, white bold caps.",
-    parsed.discoveryPlan,
-    THUMB_RENDER_QUALITY,
+    "ONE photoreal 16:9 royal clickbait thumbnail, not a collage.",
+    "Vertical split. Huge furious or crying face on the left. Target caught on the right. Thick red arrow on the target.",
+    "Bottom-left red tab, exact text: BREAKING NEWS",
+    `White banner, huge black condensed ALL-CAPS, exact text: ${parsed.overlayText}`,
+    faces,
+    "Harsh press flash. Real faces. No watermark. No YouTube UI. 1280x720.",
   ].join(" ");
 
   return {
