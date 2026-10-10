@@ -370,6 +370,9 @@ async function downloadReferenceBytes(
     youtubeId
       ? `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/clay/thumbs/${youtubeId}.jpg`
       : "",
+    youtubeId
+      ? `https://pub-c25f40bdebfb4d9cb7c2539a01c0854d.r2.dev/collection/crown/thumbs/${youtubeId}.jpg`
+      : "",
     youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg` : "",
     youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/sddefault.jpg` : "",
     youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "",

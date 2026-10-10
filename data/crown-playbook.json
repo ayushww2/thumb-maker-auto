@@ -1,0 +1,229 @@
+{
+  "generatedAt": "2026-10-10T14:24:07.675Z",
+  "niche": "crown-watch",
+  "minViews": 1,
+  "sampleSize": 150,
+  "viralThreshold": 100000,
+  "scanCount": 16,
+  "summary": "Crown Watch News performs best with urgent royal or celebrity conflict presented through photoreal two-shot or split-screen thumbnails. The strongest package combines a red BREAKING NEWS tab, a white banner with a short black all-caps quote, recognizable faces, and a clear accusation, decision, warning, or emotional confrontation. High-view thumbnails create an information gap by showing the reaction and conflict without explaining the full event.",
+  "viralPatterns": [
+    "William and Catherine positioned as decisive authorities making a major announcement",
+    "Camilla framed as the central target of expulsion, scandal, humiliation, or loss of status",
+    "Charles shown as stunned, weakened, hospitalized, or forced to make a major decision",
+    "Princess Diana used as an emotional source of secrets, letters, revenge, or unresolved family conflict",
+    "Direct confrontations involving William, Harry, Camilla, Catherine, Anne, or Charles",
+    "Celebrity revelations linked to Meghan Markle, Oprah Winfrey, Tyler Perry, or private messages",
+    "Emotional facial reactions including tears, shock, fury, fear, and stunned silence",
+    "Claims of hidden evidence, secret reports, private letters, DNA discoveries, or previously concealed behavior",
+    "Authority figures taking action through titles, crowns, duties, estates, protocol, or public statements",
+    "A dramatic unresolved consequence that encourages viewers to discover what happened next"
+  ],
+  "thumbnailFormats": [
+    "Photoreal royal split-screen with a large emotional close-up on the left and a wider confrontation or ceremonial scene on the right",
+    "Tight two-person portrait of William and Catherine facing the camera with a decisive white quote banner",
+    "Large authority-figure close-up paired with the alleged target in a royal event, estate, vehicle, or family scene",
+    "Close-up of a celebrity witness or accuser beside an interview, mansion, message, or controversy scene",
+    "Emotional face dominating one side with a smaller royal group scene and a red arrow pointing to the target",
+    "Split layout connecting an archival Diana image or letter with a present-day royal reaction",
+    "Three-part composition with a large face, a conflict scene, and a small inset of the key person or evidence",
+    "Red BREAKING NEWS strip at the top, high-contrast white banner below, and faces kept large enough to read at small size"
+  ],
+  "titleFormulas": [
+    "[ROYAL FIGURE] SHOCKS Everyone With [MAJOR REVELATION]! [TARGET] LEFT STUNNED!",
+    "[ROYAL FIGURE] TAKES CHARGE And [CONSEQUENCE] Following [TARGET]'s SHOCKING [SCANDAL]!",
+    "[ROYAL FIGURE] REVEALS [HIDDEN EVIDENCE]! Britain LEFT SPEECHLESS!",
+    "[ROYAL FIGURE] ANNOUNCES SHOCKING Decision! [TARGET] ORDERED To [CONSEQUENCE]!",
+    "[AUTHORITY FIGURE] SHOCKED As He/She [PUNISHMENT] [TARGET] After Reading [BOMBSHELL EVIDENCE]!",
+    "[ROYAL FIGURE] GIVES EXPLOSIVE Speech! [TARGET] LEFT STUNNED As Crowd ERUPTS!",
+    "[FAMILY MEMBER] TAKES ACTION To HELP [ALLY] AVENGE [DIANA OR PAST BETRAYAL]!",
+    "[CELEBRITY] FINALLY BREAKS SILENCE On [CONTROVERSY]! [TARGET] In Turmoil!",
+    "[ROYAL FIGURE] CONFIRMS SHOCKING News About [SUCCESSION OR STATUS CHANGE]!",
+    "[ROYAL FIGURE] UNCOVERS [PERSON]'s Secret [LETTER, REPORT, ACCOUNT, OR DISCOVERY] And Reads It PUBLICLY!"
+  ],
+  "doList": [
+    "Use photoreal, recognizable faces with a strong emotional expression or direct eye contact",
+    "Build the image around a simple two-person conflict or a clear authority-versus-target relationship",
+    "Place a red BREAKING NEWS tab prominently near the top",
+    "Use a white banner with short black all-caps text that can be read instantly on mobile",
+    "Write banner text as a direct quote, command, accusation, warning, or decisive announcement",
+    "Keep the banner focused on the emotional payoff rather than repeating the full YouTube title",
+    "Use arrows, borders, or insets sparingly to identify the target or important evidence",
+    "Pair the title's alleged event with a thumbnail quote that adds new information",
+    "Show the reaction face and the consequence while withholding the complete explanation",
+    "Prioritize William, Catherine, Charles, Camilla, Diana-related evidence, Anne, Harry, and high-recognition celebrity figures",
+    "Use strong visual contrast between the red urgency strip, white banner, black text, and photographic faces"
+  ],
+  "dontList": [
+    "Do not use long sentences, title-length copy, or detailed explanations in the banner",
+    "Do not make the banner repeat the exact wording of the video title",
+    "Do not use vague text such as BIG NEWS, UPDATE, or ROYAL DRAMA without a specific conflict",
+    "Do not overcrowd the thumbnail with too many faces, props, logos, or competing text blocks",
+    "Do not use small faces that lose emotional clarity at thumbnail size",
+    "Do not rely on a neutral group portrait without a visible reaction or power dynamic",
+    "Do not hide the primary target behind clutter, excessive effects, or unreadable arrows",
+    "Do not make the quote so extreme that it lacks a clear connection to the title's central event",
+    "Do not use low-contrast text, thin fonts, or banners that blend into the image",
+    "Do not show the entire resolution in the thumbnail when curiosity depends on an unresolved consequence",
+    "Do not replace the red BREAKING NEWS urgency cue with decorative elements that weaken the news format"
+  ],
+  "ctrTexts": [
+    "WE HAD TO MAKE THIS HARD DECISION!",
+    "CHARLES HAS CHOSEN TO STEP ASIDE!",
+    "CATHERINE GETS THE CROWN!",
+    "YOU'VE GONE TOO FAR HARRY!",
+    "CAMILLA LEAVES WINDSOR FOREVER!",
+    "THAT IS ENOUGH CAMILLA!",
+    "DON'T YOU TOUCH CATHERINE!",
+    "WILLIAM REVEALS IT ALL TO CHARLES",
+    "WE'VE MADE OUR DECISION!",
+    "I WARNED CHARLES FOR YEARS!",
+    "SHE MADE DIANA'S LIFE MISERABLE",
+    "THE REASON WILLIAM HATES CAMILLA!"
+  ],
+  "visualLessons": [
+    {
+      "youtubeId": "Li__6T3fJo0",
+      "title": "William And Catherine SHOCK The World With ANNOUNCEMENT On Camilla’s Future! Charles Left STUNNED!",
+      "viewCount": 972000,
+      "overlayText": "BREAKING NEWS\n“WE HAD TO MAKE THIS HARD DECISION!”",
+      "formatLabel": "Royal breaking-news thumbnail",
+      "composition": "Single image with William seated on the left and Catherine on the right, both facing the camera in a tight two-person portrait",
+      "whyItWorks": "The red BREAKING NEWS strip establishes urgency, while the oversized black quote creates an unresolved conflict and promises an exclusive revelation. William and Catherine’s direct eye contact and centered side-by-side framing make the emotional stakes immediately legible at small thumbnail size."
+    },
+    {
+      "youtubeId": "24gqCrLy37s",
+      "title": "Charles Spencer SHOCKS Britain With REVEALING Discovery Of Princess Diana’s Lost Letter To Anne",
+      "viewCount": 639000,
+      "overlayText": "BREAKING NEWS\n“PRINCESS ANNE JUST BROKE DOWN”",
+      "formatLabel": "Royal breaking-news split thumbnail",
+      "composition": "Split layout: Charles Spencer's face dominates the left panel, while Princess Anne and Prince William sit in the right panel",
+      "whyItWorks": "The split-screen contrast creates instant narrative tension, while the red BREAKING NEWS banner, oversized quoted confession, and arrow direct attention to an emotional royal moment and promise an urgent revelation"
+    },
+    {
+      "youtubeId": "Qp16ExCLpZA",
+      "title": "Rob Lowe CONFIRMS Tyler Perry SOLD Meghan And Harry's Montecito Mansion For $16 7M!",
+      "viewCount": 505000,
+      "overlayText": "BREAKING NEWS\nMEGHAN RUINED MY DAMN LIFE!",
+      "formatLabel": "Celebrity breaking-news split thumbnail",
+      "composition": "Split composition: a large close-up face on the left and a wider interaction scene with both figures on the right",
+      "whyItWorks": "The oversized emotional quote is instantly readable, while the red BREAKING NEWS banner signals urgency. The close-up reaction face creates curiosity and the supporting image connects the claim to Meghan, producing a strong scandal-and-revelation click trigger."
+    },
+    {
+      "youtubeId": "76nqrzhz_E8",
+      "title": "Charles Spencer GIVES EXPLOSIVE Speech At Royal Gala! Camilla LEFT STUNNED As Crowd ERUPTS!",
+      "viewCount": 397000,
+      "overlayText": "BREAKING NEWS\nSHE MADE DIANA’S LIFE MISERABLE",
+      "formatLabel": "Royal scandal breaking-news split thumbnail",
+      "composition": "Split composition with a large close-up face on the left and a group scene on the right; Camilla is positioned at the far right and highlighted by a red arrow",
+      "whyItWorks": "The bold red BREAKING NEWS banner signals urgency, while the large black accusation is immediately readable and emotionally charged. The split layout connects Spencer’s apparent confrontation with the royal family’s reaction, and the red arrow directs attention to Camilla as the implied target."
+    },
+    {
+      "youtubeId": "RicDrkOsywQ",
+      "title": "Oprah Winfrey SHOCKS Everyone By FINALLY BREAKING SILENCE On Meghan Markle Interview Controversy!",
+      "viewCount": 395000,
+      "overlayText": "BREAKING NEWS\nNOTHING BUT AN ABSOLUTE B*TCH!",
+      "formatLabel": "Celebrity controversy breaking-news thumbnail",
+      "composition": "Split composition: a large close-up of Oprah fills the left side, while the right side shows Oprah interviewing Meghan in a bright room; Meghan's face is highlighted in a red-bordered inset near the center",
+      "whyItWorks": "The oversized Oprah reaction shot establishes authority, the red BREAKING NEWS banner signals urgency, and the bold censored insult creates outrage and curiosity. The split interview imagery and red-framed Meghan inset make the alleged conflict immediately understandable at a glance."
+    },
+    {
+      "youtubeId": "AKMRmRyQn_I",
+      "title": "Prince William TAKES CHARGE And KICKS Camilla Out Following Her SHOCKING Luxury Yacht Scandal!",
+      "viewCount": 370000,
+      "overlayText": "BREAKING NEWS\n“SHE BEEN HIDING THESE FOR YEARS”",
+      "formatLabel": "Breaking-news scandal split",
+      "composition": "Split layout with Prince William's face prominently centered in the left panel and the yacht scene occupying the right panel",
+      "whyItWorks": "The urgent red BREAKING NEWS banner creates immediacy, while the large accusation in black-on-white text is easy to read. William's serious expression paired with the yacht image visually frames a confrontation between authority and alleged luxury misconduct."
+    },
+    {
+      "youtubeId": "cH2ocZK7Hvg",
+      "title": "Princess Anne TAKES ACTION To HELP William AVENGE Diana! Camilla Faces Her WORST Day Yet!",
+      "viewCount": 350000,
+      "overlayText": "BREAKING NEWS\n“THE REASON WILLIAM HATES CAMILLA!”",
+      "formatLabel": "Royal scandal breaking-news thumbnail",
+      "composition": "Split layout: a large close-up of William and Anne fills the left side, while a smaller archival scene with Anne and Diana appears on the right",
+      "whyItWorks": "The split composition creates a visual connection between a visibly distressed William, serious Anne, and an archival Diana-related confrontation. The red BREAKING NEWS strip signals urgency, while the oversized accusation promises a secret explanation and strong emotional conflict, encouraging curiosity clicks."
+    },
+    {
+      "youtubeId": "HKIcmG06-40",
+      "title": "Camilla's Ex Husband ADMITS Shocking Truth Behind His DIVORCE! Finally Revealed!",
+      "viewCount": 283000,
+      "overlayText": "BREAKING NEWS\n“I WARNED CHARLES FOR YEARS!”",
+      "formatLabel": "Breaking-news royal confession thumbnail",
+      "composition": "Split layout with a large close-up face on the left, Charles and Camilla standing on the right, and a small centered wedding-photo inset",
+      "whyItWorks": "The angry close-up creates immediate tension, while the split image connects the ex-husband to Charles and Camilla. The red BREAKING NEWS banner signals urgency, and the large quoted accusation promises a revealing secret that directly complements the divorce-focused title."
+    },
+    {
+      "youtubeId": "W2D3x0kzGtY",
+      "title": "King Charles SHOCKS Everyone By Taking Camilla's Crown And GIVING It To Kate! Final Demand REJECTED!",
+      "viewCount": 267000,
+      "overlayText": "BREAKING NEWS\n“CATHERINE GETS THE CROWN!”",
+      "formatLabel": "Royal breaking-news split thumbnail",
+      "composition": "Split layout: a large close-up of King Charles fills the left side, while Camilla and Catherine appear in a ceremonial outdoor scene on the right",
+      "whyItWorks": "The stern close-up of Charles establishes authority and tension, while the right-side ceremony visually implies a transfer of status. The bright red BREAKING NEWS banner signals urgency, and the bold all-caps claim delivers a simple, highly provocative payoff that encourages clicks from viewers curious about the alleged royal decision"
+    },
+    {
+      "youtubeId": "qi4e7NnYb1E",
+      "title": "Prince William And Catherine CONFIRM SHOCKING News About Charles Stepping Aside! Camilla IN TEARS!",
+      "viewCount": 257000,
+      "overlayText": "BREAKING NEWS\nCHARLES HAS CHOSEN TO STEP ASIDE!",
+      "formatLabel": "Royal breaking-news split thumbnail",
+      "composition": "Split image: large close-up portraits of Catherine and William fill the left panel; a garden scene with Camilla and Charles in the foreground and William and Catherine behind them fills the right panel",
+      "whyItWorks": "Large, high-contrast text makes the dramatic claim instantly readable, while the split layout links William and Catherine to an emotional-looking scene with Charles and Camilla, prompting curiosity about what happened."
+    },
+    {
+      "youtubeId": "bZYZZgHwNiA",
+      "title": "William RECEIVES WARNING! HARRY Crosses Crucial Red Line And Faces Unforgivable Consequences!",
+      "viewCount": 226000,
+      "overlayText": "BREAKING NEWS\nYOU'VE GONE TOO FAR HARRY!",
+      "formatLabel": "Royal breaking-news confrontation thumbnail",
+      "composition": "Split composition: a large close-up of Harry fills the left side, while a wider scene with Harry and William appears on the right; a smaller inset portrait of Harry bridges the two sections near the top center",
+      "whyItWorks": "The oversized close-up makes Harry instantly recognizable, while the split scene suggests a developing dispute involving William. The red BREAKING NEWS banner signals urgency, and the direct all-caps accusation creates a clear conflict and unanswered question that encourages clicks"
+    },
+    {
+      "youtubeId": "syGOK2-3W20",
+      "title": "Prince William And Catherine ANNOUNCE SHOCKING Decision! Camilla ORDERED To Leave Windsor Lodge!",
+      "viewCount": 220000,
+      "overlayText": "BREAKING NEWS\nCAMILLA LEAVES WINDSOR FOREVER!",
+      "formatLabel": "Royal breaking-news split",
+      "composition": "Split image with a vertical white divider. Charles fills most of the left side; the car and Camilla are in the foreground on the right, with William and Catherine farther back.",
+      "whyItWorks": "The red breaking-news strip, oversized all-caps headline, and contrasting royal images make the claim easy to scan and create urgency, conflict, and curiosity."
+    },
+    {
+      "youtubeId": "UQtq_m5WG-o",
+      "title": "Catherine's Mother GOES NUTS! SHOCKINGly SHUTS DOWN Camilla's Vicious BULLYING Attack On Princess Ch",
+      "viewCount": 203000,
+      "overlayText": "BREAKING NEWS\n“THAT IS ENOUGH CAMILLA!”",
+      "formatLabel": "Breaking-news royal confrontation thumbnail",
+      "composition": "Split layout: a large close-up face fills the left half, while Camilla and the child appear in a wider outdoor scene on the right",
+      "whyItWorks": "The oversized angry close-up creates instant drama, while the split-screen scene supplies a recognizable royal conflict. The red BREAKING NEWS strip signals urgency, and the bold quoted accusation promises a shocking confrontation that invites viewers to learn what happened."
+    },
+    {
+      "youtubeId": "N0QPPHmdLnI",
+      "title": "Princess Anne INTERVENES In Garter Parade! Camilla SHOCKINGLY PUSHES Catherine Leaving Her IN TEARS!",
+      "viewCount": 198000,
+      "overlayText": "BREAKING NEWS\nDON'T YOU TOUCH CATHERINE!",
+      "formatLabel": "Split-screen royal breaking-news thumbnail",
+      "composition": "Split composition: a large close-up of Catherine's tearful face fills the left half, while the right half shows the royal group with Camilla and Princess Anne near the center-right",
+      "whyItWorks": "The crying close-up delivers an immediate emotional cue, while the parade image supplies a recognizable royal confrontation. The red BREAKING NEWS strip signals urgency, and the oversized command DON'T YOU TOUCH CATHERINE! creates a dramatic, easily readable conflict that encourages viewers to click for the missing context"
+    },
+    {
+      "youtubeId": "vOnfKIMNnSw",
+      "title": "King Charles SHOCKED As He FREEZES Camilla Out After READING William's BOMBSHELL Report!",
+      "viewCount": 193000,
+      "overlayText": "BREAKING NEWS\n“WILLIAM REVEALS IT ALL TO CHARLES”",
+      "formatLabel": "Royal family breaking-news split thumbnail",
+      "composition": "Split composition: Prince William's large emotional close-up fills the left side, while King Charles and Queen Camilla appear smaller in a formal scene on the right",
+      "whyItWorks": "The oversized crying or distressed reaction face immediately signals scandal, while the smaller Charles-Camilla confrontation supplies narrative context. The red BREAKING NEWS banner creates urgency, and the bold quoted claim promises a major secret without explaining it, encouraging curiosity clicks."
+    },
+    {
+      "youtubeId": "ffW1368wB1s",
+      "title": "William And Catherine RETURN From Scotland With HUGE Decision! Charles CAUGHT OFF GUARD!",
+      "viewCount": 190000,
+      "overlayText": "BREAKING NEWS\nWE’VE MADE OUR DECISION!",
+      "formatLabel": "Royal breaking-news thumbnail",
+      "composition": "Single image with William on the left and Catherine on the right, both faces prominently positioned in the upper center",
+      "whyItWorks": "The large red BREAKING NEWS banner signals immediate importance, while the bold first-person statement promises a decisive revelation. William and Catherine's close placement and serious expressions make the story feel personal and consequential, encouraging viewers to click for the missing details."
+    }
+  ]
+}

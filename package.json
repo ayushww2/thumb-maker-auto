@@ -17,7 +17,10 @@
     "clay:train": "tsx scripts/build-clay-playbook.ts",
     "space:seed": "tsx scripts/seed-space-collection.ts",
     "space:upload": "tsx scripts/upload-space-r2.ts",
-    "space:train": "tsx scripts/build-space-playbook.ts"
+    "space:train": "tsx scripts/build-space-playbook.ts",
+    "crown:seed": "tsx scripts/seed-crown-collection.ts",
+    "crown:upload": "tsx scripts/upload-crown-r2.ts",
+    "crown:train": "tsx scripts/build-crown-playbook.ts"
   },
   "engines": {
     "node": ">=20"

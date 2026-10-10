@@ -24,9 +24,9 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [batchTitles, setBatchTitles] = useState("");
   const [notes, setNotes] = useState("");
-  const [agentType, setAgentType] = useState<"mystery" | "clay" | "space">(
-    "space",
-  );
+  const [agentType, setAgentType] = useState<
+    "mystery" | "clay" | "space" | "crown"
+  >("crown");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queuedIds, setQueuedIds] = useState<string[]>([]);
@@ -114,18 +114,22 @@ export default function Home() {
           Mlin Auto Thumb
         </p>
         <p className="anim-rise-delay mt-3 text-sm font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-          {agentType === "space"
-            ? "Space Thumb Agent"
-            : agentType === "clay"
-              ? "Clay Thumb Agent"
-              : "Mystery Thumb Agent"}
+          {agentType === "crown"
+            ? "Royal"
+            : agentType === "space"
+              ? "Space Thumb Agent"
+              : agentType === "clay"
+                ? "Clay Thumb Agent"
+                : "Mystery Thumb Agent"}
         </p>
         <p className="anim-rise-delay mt-4 max-w-2xl text-base text-[var(--muted)] sm:text-lg">
-          {agentType === "space"
-            ? "Space thumbs are trained only on Space competitor titles + thumbs (≥100K views)."
-            : agentType === "clay"
-              ? "Clay thumbnails are trained only on Clay Mysteries competitor titles + thumbs (≥100K views)."
-              : "Submit a title — the job keeps running in the background while comps are matched and rendered."}
+          {agentType === "crown"
+            ? "Royal thumbs are trained on the channel’s top 150 videos — red BREAKING NEWS tab plus a short high-CTR quote banner."
+            : agentType === "space"
+              ? "Space thumbs are trained only on Space competitor titles + thumbs (≥100K views)."
+              : agentType === "clay"
+                ? "Clay thumbnails are trained only on Clay Mysteries competitor titles + thumbs (≥100K views)."
+                : "Submit a title — the job keeps running in the background while comps are matched and rendered."}
         </p>
       </header>
 
@@ -138,6 +142,17 @@ export default function Home() {
             Agent
           </legend>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setAgentType("crown")}
+              className={`border px-4 py-2 text-sm font-semibold ${
+                agentType === "crown"
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]"
+                  : "border-[var(--line)] text-[var(--muted)]"
+              }`}
+            >
+              Royal
+            </button>
             <button
               type="button"
               onClick={() => setAgentType("space")}
@@ -214,11 +229,13 @@ export default function Home() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             placeholder={
-              agentType === "space"
-                ? "What NASA Found on the Dark Side of Jupiter…"
-                : agentType === "clay"
-                  ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground…"
-                  : "Scientists Opened a Sealed Chamber in the Amazon — What They Found…"
+              agentType === "crown"
+                ? "William And Catherine Shock The Palace With A Final Decision On Camilla…"
+                : agentType === "space"
+                  ? "What NASA Found on the Dark Side of Jupiter…"
+                  : agentType === "clay"
+                    ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground…"
+                    : "Scientists Opened a Sealed Chamber in the Amazon — What They Found…"
             }
               className="w-full border border-[var(--line)] bg-black/25 px-4 py-3 text-lg text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
             />
@@ -238,11 +255,13 @@ export default function Home() {
               onChange={(e) => setBatchTitles(e.target.value)}
               rows={8}
               placeholder={
-                agentType === "space"
-                  ? "What NASA Found Beyond Pluto\nJupiter Is Not What You Think\nThe Object That Will Change Your View of Space Forever…"
-                  : agentType === "clay"
-                    ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground\nThe Ethiopian Bible Verse That Names the End Date\nAI Reanalyzed the Sealed Chamber Under Jerusalem…"
-                    : "Scientists Opened a Sealed Chamber in the Amazon — What They Found\nDivers Found a Door Under the Ice — Then It Opened\nThey Dug Under the Vatican Vault — And Froze…"
+                agentType === "crown"
+                  ? "William Bars Camilla From The Palace\nCatherine’s Mother Shuts Down The Attack\nHarry Crosses A Red Line And Loses Everything"
+                  : agentType === "space"
+                    ? "What NASA Found Beyond Pluto\nJupiter Is Not What You Think\nThe Object That Will Change Your View of Space Forever…"
+                    : agentType === "clay"
+                      ? "The Sumerian Tablet That Reveals Why Humans Were Hidden Underground\nThe Ethiopian Bible Verse That Names the End Date\nAI Reanalyzed the Sealed Chamber Under Jerusalem…"
+                      : "Scientists Opened a Sealed Chamber in the Amazon — What They Found\nDivers Found a Door Under the Ice — Then It Opened\nThey Dug Under the Vatican Vault — And Froze…"
               }
               className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 font-mono text-base leading-relaxed text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
             />
@@ -259,11 +278,13 @@ export default function Home() {
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder={
-              agentType === "space"
-                ? "Heavy comp copy: same layout + real youtube-space text (THIS IS … / WHAT NASA SAW), planet/NASA find dominant…"
-                : agentType === "clay"
-                  ? "Copy clay viral layout: ancient tablet / sealed text + punch banner + red marker…"
-                  : "News-realism: shocked face, discovery right, thick red arrow + circle…"
+              agentType === "crown"
+                ? "Keep the red BREAKING NEWS tab and a short quoted banner — split face left, scandal right…"
+                : agentType === "space"
+                  ? "Heavy comp copy: same layout + real youtube-space text (THIS IS … / WHAT NASA SAW), planet/NASA find dominant…"
+                  : agentType === "clay"
+                    ? "Copy clay viral layout: ancient tablet / sealed text + punch banner + red marker…"
+                    : "News-realism: shocked face, discovery right, thick red arrow + circle…"
             }
             className="w-full resize-y border border-[var(--line)] bg-black/25 px-4 py-3 text-base text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
           />
